@@ -77,7 +77,7 @@ export default function PrivacyPolicyPage() {
           <h2 className="text-base font-semibold">Contact</h2>
           <p className="mt-2">
             Des questions sur cette politique ? Écrivez-nous à{" "}
-            <span className="font-medium">contact@freshstock.example</span>.
+            <span className="font-medium">abdelkrim.bahadi1@gmail.com</span>.
           </p>
         </section>
       </div>
