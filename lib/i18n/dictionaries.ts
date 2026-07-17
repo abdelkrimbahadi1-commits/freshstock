@@ -12,6 +12,9 @@ const fr: Dict = {
   "common.loading": "Chargement…",
   "common.cancel": "Annuler",
   "common.error": "Erreur",
+  "error.notSupabaseConfigured": "Supabase non configuré",
+  "error.notSignedIn": "Vous devez être connecté pour faire ça",
+  "error.invalidCode": "Code invalide",
 
   "home.tagline": "Scannez votre stock, évitez le gaspillage, laissez-nous vous proposer le menu du jour.",
   "home.expiringSoon": "{count} produit(s) périment bientôt : {items}",
@@ -208,6 +211,9 @@ const en: Dict = {
   "common.loading": "Loading…",
   "common.cancel": "Cancel",
   "common.error": "Error",
+  "error.notSupabaseConfigured": "Supabase isn't configured",
+  "error.notSignedIn": "You need to be signed in to do that",
+  "error.invalidCode": "Invalid code",
 
   "home.tagline": "Scan your stock, avoid waste, and let us suggest today's menu.",
   "home.expiringSoon": "{count} item(s) expiring soon: {items}",

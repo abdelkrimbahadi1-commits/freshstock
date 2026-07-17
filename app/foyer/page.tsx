@@ -27,7 +27,7 @@ export default function FoyerPage() {
     try {
       setHousehold(await createHousehold(name.trim()));
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("common.error"));
+      setError(t(e instanceof Error ? e.message : "common.error"));
     }
   }
 
@@ -37,7 +37,7 @@ export default function FoyerPage() {
     try {
       setHousehold(await joinHousehold(joinCode.trim()));
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("common.error"));
+      setError(t(e instanceof Error ? e.message : "common.error"));
     }
   }
 

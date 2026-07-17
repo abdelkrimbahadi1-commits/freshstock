@@ -129,3 +129,56 @@ create policy "meal_history_all_members" on meal_history
 create policy "shopping_list_all_members" on shopping_list
   for all using (is_household_member(household_id))
   with check (is_household_member(household_id));
+
+-- Créer/rejoindre un foyer nécessite de contourner RLS à l'intérieur de la
+-- transaction : au moment de créer le foyer (ou de le retrouver par code),
+-- l'utilisateur n'est pas encore membre, donc la policy SELECT sur
+-- `households` bloquerait la ligne renvoyée par un simple insert/select côté
+-- client. Ces deux fonctions security definer font l'insert du foyer +
+-- l'ajout du membre de façon atomique, sans exposer d'accès plus large.
+create or replace function create_household(p_name text)
+returns households
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_household households;
+  v_join_code text := upper(substr(md5(random()::text), 1, 6));
+begin
+  insert into households (name, join_code, created_by)
+  values (p_name, v_join_code, auth.uid())
+  returning * into v_household;
+
+  insert into household_members (household_id, user_id, role)
+  values (v_household.id, auth.uid(), 'owner');
+
+  return v_household;
+end;
+$$;
+
+grant execute on function create_household(text) to authenticated;
+
+create or replace function join_household_by_code(p_code text)
+returns households
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_household households;
+begin
+  select * into v_household from households where join_code = upper(p_code);
+  if v_household.id is null then
+    raise exception 'invalid_code';
+  end if;
+
+  insert into household_members (household_id, user_id, role)
+  values (v_household.id, auth.uid(), 'member')
+  on conflict do nothing;
+
+  return v_household;
+end;
+$$;
+
+grant execute on function join_household_by_code(text) to authenticated;
