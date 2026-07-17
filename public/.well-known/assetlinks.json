@@ -3,8 +3,10 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "REPLACE_WITH_PACKAGE_NAME_FROM_PWABUILDER",
-      "sha256_cert_fingerprints": ["REPLACE_WITH_SHA256_FINGERPRINT_FROM_PWABUILDER"]
+      "package_name": "app.vercel.freshstock_one.twa",
+      "sha256_cert_fingerprints": [
+        "6B:E2:2F:D1:D0:39:E9:DA:C7:D9:32:0D:28:5D:59:C3:83:CD:5A:E5:1C:83:4F:37:06:9B:53:6C:FD:CF:0E:D6"
+      ]
     }
   }
 ]
