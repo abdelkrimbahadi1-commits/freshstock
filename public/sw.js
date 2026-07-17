@@ -1,5 +1,13 @@
-const CACHE_NAME = "freshstock-v1";
-const APP_SHELL = ["/", "/stock", "/menus", "/courses", "/budget", "/manifest.json", "/icons/icon.svg"];
+const CACHE_NAME = "freshstock-v2";
+const APP_SHELL = [
+  "/",
+  "/stock",
+  "/menus",
+  "/courses",
+  "/budget",
+  "/manifest.webmanifest",
+  "/icons/icon-192.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

@@ -20,7 +20,6 @@ export const metadata: Metadata = {
   title: "FreshStock",
   description:
     "Scannez votre stock, évitez le gaspillage, recevez des menus intelligents selon vos envies.",
-  manifest: "/manifest.json",
 };
 
 export const viewport: Viewport = {
