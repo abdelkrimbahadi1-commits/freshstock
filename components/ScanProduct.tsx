@@ -93,7 +93,13 @@ export default function ScanProduct({
     <div className="rounded-xl border border-black/10 dark:border-white/10 p-4 space-y-3">
       {state === "scanning" && (
         <>
-          <video ref={videoRef} className="w-full rounded-lg bg-black aspect-video" muted />
+          <video
+            ref={videoRef}
+            className="w-full rounded-lg bg-black aspect-video"
+            muted
+            autoPlay
+            playsInline
+          />
           <p className="text-sm opacity-70">{t("scan.aimCamera")}</p>
           <button
             type="button"
