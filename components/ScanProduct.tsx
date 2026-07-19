@@ -1,7 +1,8 @@
 "use client";
 
-import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BarcodeFormat, BrowserMultiFormatReader } from "@zxing/browser";
 import type { IScannerControls } from "@zxing/browser";
+import { DecodeHintType } from "@zxing/library";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/LocaleProvider";
 import { lookupBarcode } from "@/lib/openFoodFacts";
@@ -67,7 +68,14 @@ export default function ScanProduct({
 
   useEffect(() => {
     if (state !== "scanning") return;
-    const reader = new BrowserMultiFormatReader();
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.EAN_13,
+      BarcodeFormat.EAN_8,
+      BarcodeFormat.UPC_A,
+      BarcodeFormat.UPC_E,
+    ]);
+    const reader = new BrowserMultiFormatReader(hints);
     let cancelled = false;
 
     reader
