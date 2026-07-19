@@ -5,7 +5,8 @@ import type { IScannerControls } from "@zxing/browser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/LocaleProvider";
 import { lookupBarcode } from "@/lib/openFoodFacts";
-import { CATEGORIES, type Category } from "@/lib/types";
+import { findLocalProductByBarcode, saveLocalProduct } from "@/lib/products";
+import { CATEGORIES, DEFAULT_SHELF_LIFE_DAYS, type Category } from "@/lib/types";
 
 export interface ResolvedProduct {
   barcode: string | null;
@@ -35,8 +36,22 @@ export default function ScanProduct({
   const handleDetected = useCallback(async (barcode: string) => {
     controlsRef.current?.stop();
     setState("looking_up");
+
+    const local = await findLocalProductByBarcode(barcode);
+    if (local) {
+      setFound({
+        barcode: local.barcode,
+        name: local.name,
+        category: local.category,
+        image_url: local.image_url,
+      });
+      setState("found");
+      return;
+    }
+
     const result = await lookupBarcode(barcode);
     if (result) {
+      await saveLocalProduct(result);
       setFound({
         barcode: result.barcode,
         name: result.name,
@@ -82,9 +97,19 @@ export default function ScanProduct({
 
   function confirmManual() {
     if (!manualName.trim()) return;
+    const name = manualName.trim();
+    if (lastBarcode) {
+      void saveLocalProduct({
+        barcode: lastBarcode,
+        name,
+        category: manualCategory,
+        default_shelf_life_days: DEFAULT_SHELF_LIFE_DAYS[manualCategory],
+        image_url: null,
+      });
+    }
     onResolved({
       barcode: lastBarcode,
-      name: manualName.trim(),
+      name,
       category: manualCategory,
       image_url: null,
     });
