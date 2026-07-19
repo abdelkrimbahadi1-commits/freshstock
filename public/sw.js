@@ -1,4 +1,4 @@
-const CACHE_NAME = "freshstock-v2";
+const CACHE_NAME = "freshstock-v3";
 const APP_SHELL = [
   "/",
   "/stock",
@@ -32,13 +32,26 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
 
+  // Sur un réseau dégradé, une requête peut ne jamais échouer ni aboutir —
+  // sans limite ici, elle bloquerait la page indéfiniment avant même
+  // d'atteindre les timeouts côté app. On abandonne le réseau passé 8s pour
+  // retomber sur le cache (ou une vraie erreur réseau, jamais un blocage).
   event.respondWith(
-    fetch(request)
-      .then((response) => {
+    Promise.race([
+      fetch(request).then((response) => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         return response;
-      })
-      .catch(() => caches.match(request).then((cached) => cached || caches.match("/")))
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("sw-fetch-timeout")), 8000)),
+    ]).catch(async () => {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      if (request.mode === "navigate") {
+        const shell = await caches.match("/");
+        if (shell) return shell;
+      }
+      return Response.error();
+    })
   );
 });
