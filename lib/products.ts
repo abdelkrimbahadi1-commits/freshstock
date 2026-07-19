@@ -1,11 +1,28 @@
 "use client";
 
 import { db } from "./db";
-import type { Category, Product } from "./types";
+import { DEFAULT_SHELF_LIFE_DAYS, type Category, type Product } from "./types";
+
+// Produits locaux/régionaux mal couverts par Open Food Facts, reconnus dès le
+// premier scan sans attendre une saisie manuelle. Ajouter une entrée ici pour
+// chaque nouveau produit signalé comme non reconnu.
+const SEED_PRODUCTS: Record<string, { name: string; category: Category }> = {
+  "3412290011944": { name: "Eau Sidi Ali 1.5L", category: "boisson" },
+};
 
 export async function findLocalProductByBarcode(barcode: string): Promise<Product | null> {
-  const product = await db.products.where("barcode").equals(barcode).first();
-  return product ?? null;
+  const existing = await db.products.where("barcode").equals(barcode).first();
+  if (existing) return existing;
+
+  const seed = SEED_PRODUCTS[barcode];
+  if (!seed) return null;
+  return saveLocalProduct({
+    barcode,
+    name: seed.name,
+    category: seed.category,
+    default_shelf_life_days: DEFAULT_SHELF_LIFE_DAYS[seed.category],
+    image_url: null,
+  });
 }
 
 export async function saveLocalProduct(input: {
