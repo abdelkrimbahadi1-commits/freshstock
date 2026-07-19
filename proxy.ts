@@ -26,7 +26,13 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  // Rafraîchit le cookie de session sans jamais bloquer la navigation : sur un
+  // réseau mobile lent, cet appel pouvait faire attendre plusieurs secondes
+  // avant d'accéder à une page qui ne lit pourtant que le stockage local.
+  await Promise.race([
+    supabase.auth.getUser(),
+    new Promise((resolve) => setTimeout(resolve, 1500)),
+  ]);
 
   return response;
 }
