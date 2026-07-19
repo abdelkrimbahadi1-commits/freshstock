@@ -222,6 +222,7 @@ export default function ScanProduct({
             <div>
               <p className="font-medium">{found.name}</p>
               <p className="text-sm opacity-60">{t(`category.${found.category}`)}</p>
+              {found.barcode && <p className="text-xs opacity-40">{found.barcode}</p>}
             </div>
           </div>
           <div className="flex gap-2">
