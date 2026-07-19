@@ -11,8 +11,12 @@ const SEED_PRODUCTS: Record<string, { name: string; category: Category }> = {
   "6111126005924": { name: "Chergui Sport Protéines 21G", category: "boisson" },
 };
 
+function getStoredProductByBarcode(barcode: string): Promise<Product | undefined> {
+  return db.products.where("barcode").equals(barcode).first();
+}
+
 export async function findLocalProductByBarcode(barcode: string): Promise<Product | null> {
-  const existing = await db.products.where("barcode").equals(barcode).first();
+  const existing = await getStoredProductByBarcode(barcode);
   if (existing) return existing;
 
   const seed = SEED_PRODUCTS[barcode];
@@ -33,7 +37,7 @@ export async function saveLocalProduct(input: {
   default_shelf_life_days: number;
   image_url: string | null;
 }): Promise<Product> {
-  const existing = await findLocalProductByBarcode(input.barcode);
+  const existing = await getStoredProductByBarcode(input.barcode);
   const product: Product = {
     id: existing?.id ?? crypto.randomUUID(),
     barcode: input.barcode,
