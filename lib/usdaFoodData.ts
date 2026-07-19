@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "./fetchWithTimeout";
 import { DEFAULT_SHELF_LIFE_DAYS, type Category } from "./types";
 import type { OffLookupResult } from "./openFoodFacts";
 
@@ -51,7 +52,7 @@ export async function lookupUsdaBarcode(barcode: string): Promise<OffLookupResul
   if (!apiKey) return null;
 
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey)}&query=${encodeURIComponent(barcode)}&dataType=Branded&pageSize=25`
     );
     if (!res.ok) return null;

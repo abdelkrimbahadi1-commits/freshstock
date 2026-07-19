@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "./fetchWithTimeout";
 import { CATEGORIES, DEFAULT_SHELF_LIFE_DAYS, type Category } from "./types";
 
 export interface OffLookupResult {
@@ -37,7 +38,7 @@ function guessCategory(offCategories: string | undefined): Category {
 // introuvable — l'appelant doit alors proposer le fallback de saisie manuelle.
 export async function lookupBarcode(barcode: string): Promise<OffLookupResult | null> {
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`,
       { headers: { "User-Agent": "FreshStock - app locale" } }
     );
