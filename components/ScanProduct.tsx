@@ -33,6 +33,7 @@ export default function ScanProduct({
   const [found, setFound] = useState<ResolvedProduct | null>(null);
   const [manualName, setManualName] = useState("");
   const [manualCategory, setManualCategory] = useState<Category>("epicerie");
+  const [manualBarcode, setManualBarcode] = useState("");
   const [lastBarcode, setLastBarcode] = useState<string | null>(null);
 
   const handleDetected = useCallback(async (barcode: string) => {
@@ -63,6 +64,7 @@ export default function ScanProduct({
       setState("found");
     } else {
       setManualName("");
+      setManualBarcode(barcode);
       setState("not_found");
     }
   }, []);
@@ -117,9 +119,10 @@ export default function ScanProduct({
   function confirmManual() {
     if (!manualName.trim()) return;
     const name = manualName.trim();
-    if (lastBarcode) {
+    const barcode = manualBarcode.trim() || null;
+    if (barcode) {
       void saveLocalProduct({
-        barcode: lastBarcode,
+        barcode,
         name,
         category: manualCategory,
         default_shelf_life_days: DEFAULT_SHELF_LIFE_DAYS[manualCategory],
@@ -127,7 +130,7 @@ export default function ScanProduct({
       });
     }
     onResolved({
-      barcode: lastBarcode,
+      barcode,
       name,
       category: manualCategory,
       image_url: null,
@@ -150,6 +153,7 @@ export default function ScanProduct({
             type="button"
             onClick={() => {
               setManualName("");
+              setManualBarcode("");
               setState("not_found");
             }}
             className="text-sm underline opacity-80"
@@ -172,7 +176,10 @@ export default function ScanProduct({
             </button>
             <button
               type="button"
-              onClick={() => setState("not_found")}
+              onClick={() => {
+                setManualBarcode("");
+                setState("not_found");
+              }}
               className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm"
             >
               {t("scan.manualEntry")}
@@ -208,6 +215,7 @@ export default function ScanProduct({
               onClick={() => {
                 setManualName(found.name);
                 setManualCategory(found.category);
+                setManualBarcode(found.barcode ?? "");
                 setState("not_found");
               }}
               className="text-sm underline opacity-80"
@@ -221,6 +229,13 @@ export default function ScanProduct({
       {state === "not_found" && (
         <div className="space-y-3">
           {lastBarcode && <p className="text-sm opacity-70">{t("scan.notFound", { barcode: lastBarcode })}</p>}
+          <input
+            value={manualBarcode}
+            onChange={(e) => setManualBarcode(e.target.value)}
+            placeholder={t("scan.barcodePlaceholder")}
+            inputMode="numeric"
+            className="w-full rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm"
+          />
           <input
             value={manualName}
             onChange={(e) => setManualName(e.target.value)}

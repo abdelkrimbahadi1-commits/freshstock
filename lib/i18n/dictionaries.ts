@@ -63,6 +63,7 @@ const fr: Dict = {
   "scan.wrongProduct": "Ce n'est pas le bon produit",
   "scan.notFound": "Produit non trouvé pour le code {barcode}. Complétez à la main — il sera reconnu automatiquement au prochain scan.",
   "scan.productNamePlaceholder": "Nom du produit",
+  "scan.barcodePlaceholder": "Code-barres (optionnel)",
   "scan.retryScan": "Réessayer le scan",
 
   "form.unitPlaceholder": "unité",
@@ -262,6 +263,7 @@ const en: Dict = {
   "scan.wrongProduct": "This isn't the right product",
   "scan.notFound": "Product not found for code {barcode}. Fill it in manually — it'll be recognized automatically next time.",
   "scan.productNamePlaceholder": "Product name",
+  "scan.barcodePlaceholder": "Barcode (optional)",
   "scan.retryScan": "Retry scan",
 
   "form.unitPlaceholder": "unit",
