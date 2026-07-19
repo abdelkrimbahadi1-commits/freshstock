@@ -40,27 +40,49 @@ export default function ScanProduct({
     controlsRef.current?.stop();
     setState("looking_up");
 
-    const local = await findLocalProductByBarcode(barcode);
-    if (local) {
-      setFound({
-        barcode: local.barcode,
-        name: local.name,
-        category: local.category,
-        image_url: local.image_url,
-      });
-      setState("found");
-      return;
-    }
+    // Filet de sécurité : quoi qu'il arrive dans la chaîne de recherche
+    // (cache local, Open Food Facts, USDA), on ne reste jamais bloqué sur cet
+    // écran plus de 12s — chaque appel réseau a déjà son propre timeout, mais
+    // ce garde-fou global couvre tout cas imprévu (ex. connexion à moitié
+    // ouverte qui ignore l'annulation).
+    const lookup = (async (): Promise<ResolvedProduct | null> => {
+      const local = await findLocalProductByBarcode(barcode);
+      if (local) {
+        return {
+          barcode: local.barcode,
+          name: local.name,
+          category: local.category,
+          image_url: local.image_url,
+        };
+      }
 
-    const result = (await lookupBarcode(barcode)) ?? (await lookupUsdaBarcode(barcode));
-    if (result) {
+      const result = (await lookupBarcode(barcode)) ?? (await lookupUsdaBarcode(barcode));
+      if (!result) return null;
       await saveLocalProduct(result);
-      setFound({
+      return {
         barcode: result.barcode,
         name: result.name,
         category: result.category,
         image_url: result.image_url,
-      });
+      };
+    })();
+
+    const watchdog = new Promise<"timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), 12000)
+    );
+
+    const outcome = await Promise.race([lookup, watchdog]);
+
+    if (outcome === "timeout") {
+      console.error("[ScanProduct] product lookup timed out", barcode);
+      setManualName("");
+      setManualBarcode(barcode);
+      setState("not_found");
+      return;
+    }
+
+    if (outcome) {
+      setFound(outcome);
       setState("found");
     } else {
       setManualName("");
