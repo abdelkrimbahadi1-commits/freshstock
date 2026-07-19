@@ -8,6 +8,7 @@ import { useLocale } from "@/components/LocaleProvider";
 import { lookupBarcode } from "@/lib/openFoodFacts";
 import { findLocalProductByBarcode, saveLocalProduct } from "@/lib/products";
 import { CATEGORIES, DEFAULT_SHELF_LIFE_DAYS, type Category } from "@/lib/types";
+import { lookupUsdaBarcode } from "@/lib/usdaFoodData";
 
 export interface ResolvedProduct {
   barcode: string | null;
@@ -50,7 +51,7 @@ export default function ScanProduct({
       return;
     }
 
-    const result = await lookupBarcode(barcode);
+    const result = (await lookupBarcode(barcode)) ?? (await lookupUsdaBarcode(barcode));
     if (result) {
       await saveLocalProduct(result);
       setFound({
