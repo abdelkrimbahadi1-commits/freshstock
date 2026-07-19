@@ -79,12 +79,22 @@ export default function ScanProduct({
     let cancelled = false;
 
     reader
-      .decodeFromVideoDevice(undefined, videoRef.current!, (result) => {
-        if (cancelled || !result) return;
-        const barcode = result.getText();
-        setLastBarcode(barcode);
-        void handleDetected(barcode);
-      })
+      .decodeFromConstraints(
+        {
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        },
+        videoRef.current!,
+        (result) => {
+          if (cancelled || !result) return;
+          const barcode = result.getText();
+          setLastBarcode(barcode);
+          void handleDetected(barcode);
+        }
+      )
       .then((controls) => {
         controlsRef.current = controls;
       })
