@@ -8,6 +8,7 @@ import { DEFAULT_SHELF_LIFE_DAYS, type Category, type Product } from "./types";
 // chaque nouveau produit signalé comme non reconnu.
 const SEED_PRODUCTS: Record<string, { name: string; category: Category }> = {
   "3412290011944": { name: "Eau Sidi Ali 1.5L", category: "boisson" },
+  "6111126005924": { name: "Chergui Sport Protéines 21G", category: "boisson" },
 };
 
 export async function findLocalProductByBarcode(barcode: string): Promise<Product | null> {
