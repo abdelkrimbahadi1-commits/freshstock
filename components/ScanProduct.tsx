@@ -65,7 +65,8 @@ export default function ScanProduct({
       .then((controls) => {
         controlsRef.current = controls;
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[ScanProduct] getUserMedia failed", err);
         if (!cancelled) setState("camera_error");
       });
 
@@ -117,13 +118,22 @@ export default function ScanProduct({
       {state === "camera_error" && (
         <div className="space-y-2">
           <p className="text-sm text-amber-600">{t("scan.cameraError")}</p>
-          <button
-            type="button"
-            onClick={() => setState("not_found")}
-            className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm"
-          >
-            {t("scan.manualEntry")}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setState("scanning")}
+              className="rounded-lg border border-black/15 dark:border-white/15 px-4 py-2 text-sm"
+            >
+              {t("scan.retryScan")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setState("not_found")}
+              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm"
+            >
+              {t("scan.manualEntry")}
+            </button>
+          </div>
         </div>
       )}
 
