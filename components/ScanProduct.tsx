@@ -99,6 +99,11 @@ export default function ScanProduct({
       BarcodeFormat.EAN_8,
       BarcodeFormat.UPC_A,
       BarcodeFormat.UPC_E,
+      // Petits producteurs/marques locales sans code EAN officiel utilisent
+      // souvent des étiquettes génériques dans l'un de ces formats.
+      BarcodeFormat.CODE_128,
+      BarcodeFormat.CODE_39,
+      BarcodeFormat.ITF,
     ]);
     const reader = new BrowserMultiFormatReader(hints);
     let cancelled = false;
