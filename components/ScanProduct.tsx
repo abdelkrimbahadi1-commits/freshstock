@@ -146,13 +146,24 @@ export default function ScanProduct({
         // réels) arrête la boucle définitivement, aperçu caméra "figé" sans
         // aucun message. Ici, quelle que soit l'erreur, on retente toujours
         // à l'intervalle suivant.
+        //
+        // La caméra d'un téléphone capture souvent en résolution native bien
+        // plus grande que les 720x1280 "ideal" demandés (le navigateur n'est
+        // pas obligé de les respecter). Décoder une image dense (fond
+        // sombre, beaucoup de texte) à pleine résolution peut bloquer le
+        // thread principal plusieurs secondes d'affilée — visuellement
+        // indiscernable d'un gel de l'aperçu. On sous-échantillonne donc
+        // l'image avant de la passer au décodeur : un code-barres qui remplit
+        // déjà bien le cadre reste parfaitement lisible à cette taille.
+        const MAX_DIMENSION = 800;
         intervalId = setInterval(() => {
           const video = videoRef.current;
           if (cancelled || !video || !ctx || video.readyState < video.HAVE_CURRENT_DATA) return;
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          ctx.drawImage(video, 0, 0);
           try {
+            const scale = Math.min(1, MAX_DIMENSION / Math.max(video.videoWidth, video.videoHeight));
+            canvas.width = Math.round(video.videoWidth * scale);
+            canvas.height = Math.round(video.videoHeight * scale);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const result = reader.decodeFromCanvas(canvas);
             const barcode = result.getText();
             setLastBarcode(barcode);
