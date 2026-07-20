@@ -34,6 +34,28 @@ function guessCategory(offCategories: string | undefined): Category {
   return match?.category ?? "epicerie";
 }
 
+// De nombreuses fiches Open Food Facts ont une photo mais le champ
+// "product_name" unifié vide (saisie communautaire incomplète) — le nom
+// existe souvent quand même dans une variante localisée, ou à défaut dans
+// la marque, ce qui reste plus utile que le code-barres brut en dernier recours.
+function resolveName(product: Record<string, unknown>, barcode: string): string {
+  const candidates = [
+    product.product_name,
+    product.product_name_fr,
+    product.product_name_en,
+    product.generic_name,
+    product.generic_name_fr,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  if (typeof product.brands === "string" && product.brands.trim()) {
+    const brand = product.brands.split(",")[0]?.trim();
+    if (brand) return brand;
+  }
+  return `Produit ${barcode}`;
+}
+
 // Lookup OpenFoodFacts (gratuit, sans clé). Renvoie null si le produit est
 // introuvable — l'appelant doit alors proposer le fallback de saisie manuelle.
 export async function lookupBarcode(barcode: string): Promise<OffLookupResult | null> {
@@ -50,7 +72,7 @@ export async function lookupBarcode(barcode: string): Promise<OffLookupResult | 
     const category = guessCategory(product.categories);
     return {
       barcode,
-      name: product.product_name || product.generic_name || `Produit ${barcode}`,
+      name: resolveName(product, barcode),
       category,
       default_shelf_life_days: DEFAULT_SHELF_LIFE_DAYS[category],
       image_url: product.image_front_small_url || product.image_url || null,
