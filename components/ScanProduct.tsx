@@ -107,6 +107,10 @@ export default function ScanProduct({
       BarcodeFormat.CODE_39,
       BarcodeFormat.ITF,
     ]);
+    // Webcams (laptop notamment) : mise au point fixe et résolution souvent
+    // plus faible qu'un capteur de téléphone. TRY_HARDER pousse le décodeur à
+    // insister sur les images ambiguës au lieu d'abandonner immédiatement.
+    hints.set(DecodeHintType.TRY_HARDER, true);
     const reader = new BrowserMultiFormatReader(hints);
     let cancelled = false;
 
