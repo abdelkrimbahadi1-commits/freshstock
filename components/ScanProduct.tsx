@@ -1,7 +1,6 @@
 "use client";
 
 import { BarcodeFormat, BrowserMultiFormatReader } from "@zxing/browser";
-import type { IScannerControls } from "@zxing/browser";
 import { DecodeHintType } from "@zxing/library";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/LocaleProvider";
@@ -28,7 +27,7 @@ export default function ScanProduct({
 }) {
   const { t } = useLocale();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
+  const stopScanRef = useRef<(() => void) | null>(null);
   const [state, setState] = useState<ScanState>("scanning");
   const [found, setFound] = useState<ResolvedProduct | null>(null);
   const [foundName, setFoundName] = useState("");
@@ -38,7 +37,7 @@ export default function ScanProduct({
   const [lastBarcode, setLastBarcode] = useState<string | null>(null);
 
   const handleDetected = useCallback(async (barcode: string) => {
-    controlsRef.current?.stop();
+    stopScanRef.current?.();
     setState("looking_up");
 
     // Filet de sécurité : quoi qu'il arrive dans la chaîne de recherche
@@ -107,17 +106,22 @@ export default function ScanProduct({
       BarcodeFormat.CODE_39,
       BarcodeFormat.ITF,
     ]);
-    // TRY_HARDER a été essayé ici pour améliorer le scan sur webcam
-    // d'ordinateur, mais son coût CPU par image de flux vidéo continu peut
-    // figer l'aperçu caméra sur téléphone pour des codes-barres difficiles à
-    // décoder (surface sombre/réfléchissante, angle) — régression trop
-    // coûteuse pour l'usage principal de l'app (scan au téléphone).
     const reader = new BrowserMultiFormatReader(hints);
     let cancelled = false;
+    let stream: MediaStream | null = null;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-    reader
-      .decodeFromConstraints(
-        {
+    function stop() {
+      if (intervalId !== null) clearInterval(intervalId);
+      stream?.getTracks().forEach((track) => track.stop());
+    }
+    stopScanRef.current = stop;
+
+    async function start() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "environment",
             // Portrait, pas paysage : la plupart des téléphones sont tenus
@@ -127,26 +131,49 @@ export default function ScanProduct({
             width: { ideal: 720 },
             height: { ideal: 1280 },
           },
-        },
-        videoRef.current!,
-        (result) => {
-          if (cancelled || !result) return;
-          const barcode = result.getText();
-          setLastBarcode(barcode);
-          void handleDetected(barcode);
+        });
+        if (cancelled || !videoRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
         }
-      )
-      .then((controls) => {
-        controlsRef.current = controls;
-      })
-      .catch((err) => {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+
+        // Boucle de décodage maison plutôt que decodeFromConstraints() : la
+        // boucle interne de zxing-browser n'attrape que ChecksumException/
+        // FormatException/NotFoundException pour relancer une tentative — un
+        // tout autre type d'erreur (déjà observé sur certains codes-barres
+        // réels) arrête la boucle définitivement, aperçu caméra "figé" sans
+        // aucun message. Ici, quelle que soit l'erreur, on retente toujours
+        // à l'intervalle suivant.
+        intervalId = setInterval(() => {
+          const video = videoRef.current;
+          if (cancelled || !video || !ctx || video.readyState < video.HAVE_CURRENT_DATA) return;
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0);
+          try {
+            const result = reader.decodeFromCanvas(canvas);
+            const barcode = result.getText();
+            setLastBarcode(barcode);
+            void handleDetected(barcode);
+          } catch {
+            // Rien détecté sur cette image : normal la plupart du temps,
+            // on retente à la prochaine.
+          }
+        }, 500);
+      } catch (err) {
         console.error("[ScanProduct] getUserMedia failed", err);
         if (!cancelled) setState("camera_error");
-      });
+      }
+    }
+
+    void start();
 
     return () => {
       cancelled = true;
-      controlsRef.current?.stop();
+      stop();
+      if (stopScanRef.current === stop) stopScanRef.current = null;
     };
   }, [state, handleDetected]);
 
