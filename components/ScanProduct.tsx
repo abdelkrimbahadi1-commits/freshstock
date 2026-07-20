@@ -113,8 +113,12 @@ export default function ScanProduct({
         {
           video: {
             facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            // Portrait, pas paysage : la plupart des téléphones sont tenus
+            // verticalement pour scanner. Demander du 16:9 paysage forçait
+            // un aperçu écrasé dans une bande étroite (grosses bandes
+            // noires), rendant le cadrage du code-barres très difficile.
+            width: { ideal: 720 },
+            height: { ideal: 1280 },
           },
         },
         videoRef.current!,
@@ -170,7 +174,7 @@ export default function ScanProduct({
         <>
           <video
             ref={videoRef}
-            className="w-full rounded-lg bg-black aspect-video"
+            className="w-full rounded-lg bg-black aspect-[3/4] object-cover"
             muted
             autoPlay
             playsInline
