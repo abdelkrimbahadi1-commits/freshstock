@@ -1,4 +1,4 @@
-const CACHE_NAME = "freshstock-v3";
+const CACHE_NAME = "freshstock-v4";
 const APP_SHELL = [
   "/",
   "/stock",
@@ -28,9 +28,32 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// Fichiers de build Next.js : noms hashés, donc immuables une fois publiés —
+// aucune raison d'attendre le réseau pour eux, le cache fait référence.
+function isImmutableAsset(url) {
+  return url.pathname.startsWith("/_next/static/");
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+
+  if (isImmutableAsset(url)) {
+    event.respondWith(
+      caches.match(request).then(
+        (cached) =>
+          cached ||
+          fetch(request).then((response) => {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+            return response;
+          })
+      )
+    );
+    return;
+  }
 
   // Sur un réseau dégradé, une requête peut ne jamais échouer ni aboutir —
   // sans limite ici, elle bloquerait la page indéfiniment avant même
