@@ -31,6 +31,7 @@ export default function ScanProduct({
   const controlsRef = useRef<IScannerControls | null>(null);
   const [state, setState] = useState<ScanState>("scanning");
   const [found, setFound] = useState<ResolvedProduct | null>(null);
+  const [foundName, setFoundName] = useState("");
   const [manualName, setManualName] = useState("");
   const [manualCategory, setManualCategory] = useState<Category>("epicerie");
   const [manualBarcode, setManualBarcode] = useState("");
@@ -83,6 +84,7 @@ export default function ScanProduct({
 
     if (outcome) {
       setFound(outcome);
+      setFoundName(outcome.name);
       setState("found");
     } else {
       setManualName("");
@@ -144,7 +146,10 @@ export default function ScanProduct({
   }, [state, handleDetected]);
 
   function confirmFound() {
-    if (found) onResolved(found);
+    if (!found) return;
+    const name = foundName.trim();
+    if (!name) return;
+    onResolved({ ...found, name });
   }
 
   function confirmManual() {
@@ -228,9 +233,14 @@ export default function ScanProduct({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={found.image_url} alt="" className="w-14 h-14 object-cover rounded-md" />
             )}
-            <div>
-              <p className="font-medium">{found.name}</p>
-              <p className="text-sm opacity-60">{t(`category.${found.category}`)}</p>
+            <div className="flex-1 min-w-0">
+              <input
+                value={foundName}
+                onChange={(e) => setFoundName(e.target.value)}
+                placeholder={t("scan.productNamePlaceholder")}
+                className="w-full rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm font-medium"
+              />
+              <p className="text-sm opacity-60 mt-1">{t(`category.${found.category}`)}</p>
               {found.barcode && <p className="text-xs opacity-40">{found.barcode}</p>}
             </div>
           </div>
@@ -238,14 +248,15 @@ export default function ScanProduct({
             <button
               type="button"
               onClick={confirmFound}
-              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm"
+              disabled={!foundName.trim()}
+              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm disabled:opacity-40"
             >
               {t("scan.addToStock")}
             </button>
             <button
               type="button"
               onClick={() => {
-                setManualName(found.name);
+                setManualName(foundName);
                 setManualCategory(found.category);
                 setManualBarcode(found.barcode ?? "");
                 setState("not_found");
