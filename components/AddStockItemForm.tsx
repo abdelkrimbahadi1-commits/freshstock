@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useLocale } from "@/components/LocaleProvider";
+import { saveLocalProduct } from "@/lib/products";
 import { addStockItem } from "@/lib/stock";
 import { CATEGORIES, DEFAULT_SHELF_LIFE_DAYS, type Category, type StockLocation } from "@/lib/types";
 
@@ -18,6 +19,7 @@ export default function AddStockItemForm({
   initialCategory = "autre",
   barcode = null,
   productId = null,
+  imageUrl = null,
   onSaved,
   onCancel,
 }: {
@@ -25,6 +27,7 @@ export default function AddStockItemForm({
   initialCategory?: Category;
   barcode?: string | null;
   productId?: string | null;
+  imageUrl?: string | null;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -40,11 +43,24 @@ export default function AddStockItemForm({
 
   async function handleSave() {
     if (!name.trim()) return;
+    const trimmedName = name.trim();
     setSaving(true);
+    // Répercute le nom (et la catégorie) corrigés vers le cache produit local,
+    // sinon un prochain scan du même code-barres retrouve l'ancien nom
+    // (ex. le fallback "Produit <code>") au lieu de la correction saisie ici.
+    if (barcode) {
+      await saveLocalProduct({
+        barcode,
+        name: trimmedName,
+        category,
+        default_shelf_life_days: DEFAULT_SHELF_LIFE_DAYS[category],
+        image_url: imageUrl,
+      });
+    }
     await addStockItem({
       product_id: productId,
       barcode,
-      name: name.trim(),
+      name: trimmedName,
       category,
       quantity,
       unit,

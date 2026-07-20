@@ -92,6 +92,7 @@ export default function StockPage() {
           initialName={resolved?.name ?? ""}
           initialCategory={resolved?.category ?? "autre"}
           barcode={resolved?.barcode ?? null}
+          imageUrl={resolved?.image_url ?? null}
           onSaved={() => {
             setMode("list");
             void refresh();
