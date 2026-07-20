@@ -153,6 +153,18 @@ export default function ScanProduct({
     if (!found) return;
     const name = foundName.trim();
     if (!name) return;
+    // Mémorise la correction dès cet écran : l'utilisateur peut s'arrêter ici
+    // sans aller au bout du formulaire d'ajout au stock qui suit, et le nom
+    // corrigé doit quand même être reconnu au prochain scan de ce code-barres.
+    if (found.barcode) {
+      void saveLocalProduct({
+        barcode: found.barcode,
+        name,
+        category: found.category,
+        default_shelf_life_days: DEFAULT_SHELF_LIFE_DAYS[found.category],
+        image_url: found.image_url,
+      });
+    }
     onResolved({ ...found, name });
   }
 
