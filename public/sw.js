@@ -1,4 +1,4 @@
-const CACHE_NAME = "freshstock-v4";
+const CACHE_NAME = "freshstock-v5";
 const APP_SHELL = [
   "/",
   "/stock",
@@ -55,26 +55,40 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Sur un réseau dégradé, une requête peut ne jamais échouer ni aboutir —
-  // sans limite ici, elle bloquerait la page indéfiniment avant même
-  // d'atteindre les timeouts côté app. On abandonne le réseau passé 8s pour
-  // retomber sur le cache (ou une vraie erreur réseau, jamais un blocage).
+  // Stale-while-revalidate : si une version est en cache, on la sert
+  // immédiatement (ouverture quasi instantanée même sur réseau très lent,
+  // typiquement en magasin) et on rafraîchit le cache en tâche de fond.
+  // Sans version en cache (première visite), on attend le réseau — avec un
+  // délai de secours de 8s pour ne jamais bloquer indéfiniment — avant de
+  // retomber sur la coquille de l'app.
   event.respondWith(
-    Promise.race([
-      fetch(request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-        return response;
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("sw-fetch-timeout")), 8000)),
-    ]).catch(async () => {
-      const cached = await caches.match(request);
-      if (cached) return cached;
-      if (request.mode === "navigate") {
-        const shell = await caches.match("/");
-        if (shell) return shell;
+    caches.match(request).then((cached) => {
+      const networkFetch = fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(() => undefined);
+
+      if (cached) {
+        event.waitUntil(networkFetch);
+        return cached;
       }
-      return Response.error();
+
+      return Promise.race([
+        networkFetch,
+        new Promise((resolve) => setTimeout(resolve, 8000)),
+      ]).then(async (response) => {
+        if (response) return response;
+        const fallback = await caches.match(request);
+        if (fallback) return fallback;
+        if (request.mode === "navigate") {
+          const shell = await caches.match("/");
+          if (shell) return shell;
+        }
+        return Response.error();
+      });
     })
   );
 });
