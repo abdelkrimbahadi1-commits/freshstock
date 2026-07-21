@@ -25,6 +25,13 @@ hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
   ZXing.BarcodeFormat.CODE_39,
   ZXing.BarcodeFormat.ITF,
 ]);
+// TRY_HARDER avait été retiré du thread principal (coût CPU trop élevé sur
+// un flux vidéo continu, cf. historique). Ici il ne coûte plus rien côté
+// interface : ce Worker est isolé et borné par un délai de secours côté
+// appelant (voir ScanProduct.tsx), donc une tentative plus exhaustive ne
+// peut plus jamais geler l'aperçu caméra — seulement la faire échouer plus
+// vite en cas de dépassement du délai, sans conséquence visible.
+hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 var reader = new ZXing.MultiFormatReader();
 reader.setHints(hints);
 
