@@ -34,6 +34,7 @@ export default function ScanProduct({
   const [manualBarcode, setManualBarcode] = useState("");
   const [manualPhoto, setManualPhoto] = useState<string | null>(null);
   const [knownProducts, setKnownProducts] = useState<Product[]>([]);
+  const [knownProductsSearch, setKnownProductsSearch] = useState("");
   const [lastBarcode, setLastBarcode] = useState<string | null>(null);
 
   const handleDetected = useCallback(async (barcode: string) => {
@@ -355,6 +356,7 @@ export default function ScanProduct({
               setManualName("");
               setManualBarcode("");
               setManualPhoto(null);
+              setKnownProductsSearch("");
               setState("not_found");
             }}
             className="text-sm underline opacity-80"
@@ -381,6 +383,7 @@ export default function ScanProduct({
                 setManualName("");
                 setManualBarcode("");
                 setManualPhoto(null);
+                setKnownProductsSearch("");
                 setState("not_found");
               }}
               className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm"
@@ -427,6 +430,7 @@ export default function ScanProduct({
                 setManualCategory(found.category);
                 setManualBarcode(found.barcode ?? "");
                 setManualPhoto(null);
+                setKnownProductsSearch("");
                 setState("not_found");
               }}
               className="text-sm underline opacity-80"
@@ -444,8 +448,20 @@ export default function ScanProduct({
           {knownProducts.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs opacity-60">{t("scan.knownProducts")}</p>
+              {knownProducts.length > 4 && (
+                <input
+                  value={knownProductsSearch}
+                  onChange={(e) => setKnownProductsSearch(e.target.value)}
+                  placeholder={t("scan.searchKnownProducts")}
+                  className="w-full rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm"
+                />
+              )}
               <div className="flex gap-2 overflow-x-auto pb-1">
-                {knownProducts.map((product) => (
+                {knownProducts
+                  .filter((product) =>
+                    product.name.toLowerCase().includes(knownProductsSearch.trim().toLowerCase())
+                  )
+                  .map((product) => (
                   <button
                     key={product.id}
                     type="button"
