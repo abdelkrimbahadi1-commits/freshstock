@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useLocale } from "@/components/LocaleProvider";
 import { lookupBarcode } from "@/lib/openFoodFacts";
-import { findLocalProductByBarcode, saveLocalProduct } from "@/lib/products";
-import { CATEGORIES, DEFAULT_SHELF_LIFE_DAYS, type Category } from "@/lib/types";
+import { findLocalProductByBarcode, listLocalProducts, saveLocalProduct } from "@/lib/products";
+import { CATEGORIES, DEFAULT_SHELF_LIFE_DAYS, type Category, type Product } from "@/lib/types";
 import { lookupUsdaBarcode } from "@/lib/usdaFoodData";
 
 export interface ResolvedProduct {
@@ -32,6 +32,8 @@ export default function ScanProduct({
   const [manualName, setManualName] = useState("");
   const [manualCategory, setManualCategory] = useState<Category>("epicerie");
   const [manualBarcode, setManualBarcode] = useState("");
+  const [manualPhoto, setManualPhoto] = useState<string | null>(null);
+  const [knownProducts, setKnownProducts] = useState<Product[]>([]);
   const [lastBarcode, setLastBarcode] = useState<string | null>(null);
 
   const handleDetected = useCallback(async (barcode: string) => {
@@ -267,6 +269,34 @@ export default function ScanProduct({
     };
   }, [state, handleDetected]);
 
+  useEffect(() => {
+    if (state !== "not_found") return;
+    let cancelled = false;
+    void listLocalProducts().then((products) => {
+      if (!cancelled) setKnownProducts(products);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [state]);
+
+  function selectKnownProduct(product: Product) {
+    onResolved({
+      barcode: product.barcode,
+      name: product.name,
+      category: product.category,
+      image_url: product.image_url,
+    });
+  }
+
+  function handlePhotoCapture(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setManualPhoto(typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(file);
+  }
+
   function confirmFound() {
     if (!found) return;
     const name = foundName.trim();
@@ -296,14 +326,14 @@ export default function ScanProduct({
         name,
         category: manualCategory,
         default_shelf_life_days: DEFAULT_SHELF_LIFE_DAYS[manualCategory],
-        image_url: null,
+        image_url: manualPhoto,
       });
     }
     onResolved({
       barcode,
       name,
       category: manualCategory,
-      image_url: null,
+      image_url: manualPhoto,
     });
   }
 
@@ -324,6 +354,7 @@ export default function ScanProduct({
             onClick={() => {
               setManualName("");
               setManualBarcode("");
+              setManualPhoto(null);
               setState("not_found");
             }}
             className="text-sm underline opacity-80"
@@ -347,7 +378,9 @@ export default function ScanProduct({
             <button
               type="button"
               onClick={() => {
+                setManualName("");
                 setManualBarcode("");
+                setManualPhoto(null);
                 setState("not_found");
               }}
               className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm"
@@ -393,6 +426,7 @@ export default function ScanProduct({
                 setManualName(foundName);
                 setManualCategory(found.category);
                 setManualBarcode(found.barcode ?? "");
+                setManualPhoto(null);
                 setState("not_found");
               }}
               className="text-sm underline opacity-80"
@@ -406,6 +440,37 @@ export default function ScanProduct({
       {state === "not_found" && (
         <div className="space-y-3">
           {lastBarcode && <p className="text-sm opacity-70">{t("scan.notFound", { barcode: lastBarcode })}</p>}
+
+          {knownProducts.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs opacity-60">{t("scan.knownProducts")}</p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {knownProducts.map((product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => selectKnownProduct(product)}
+                    className="flex-shrink-0 w-20 space-y-1 text-center"
+                  >
+                    {product.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={product.image_url}
+                        alt=""
+                        className="w-20 h-20 object-cover rounded-md border border-black/10 dark:border-white/10"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 rounded-md border border-black/10 dark:border-white/10 flex items-center justify-center text-2xl">
+                        📦
+                      </div>
+                    )}
+                    <p className="text-xs truncate">{product.name}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <input
             value={manualBarcode}
             onChange={(e) => setManualBarcode(e.target.value)}
@@ -419,6 +484,24 @@ export default function ScanProduct({
             placeholder={t("scan.productNamePlaceholder")}
             className="w-full rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm"
           />
+
+          <div className="flex items-center gap-3">
+            {manualPhoto && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={manualPhoto} alt="" className="w-14 h-14 object-cover rounded-md" />
+            )}
+            <label className="text-sm underline opacity-80 cursor-pointer">
+              {manualPhoto ? t("scan.retakePhoto") : t("scan.takePhoto")}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handlePhotoCapture}
+                className="hidden"
+              />
+            </label>
+          </div>
+
           <select
             value={manualCategory}
             onChange={(e) => setManualCategory(e.target.value as Category)}
