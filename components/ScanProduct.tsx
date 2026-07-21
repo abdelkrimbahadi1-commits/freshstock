@@ -201,10 +201,13 @@ export default function ScanProduct({
 
       // La caméra d'un téléphone capture souvent en résolution native bien
       // plus grande que les 720x1280 "ideal" demandés (le navigateur n'est
-      // pas obligé de les respecter). Sous-échantillonner réduit le volume
-      // de pixels à traiter par tentative sans nuire à la lisibilité d'un
-      // code-barres qui remplit déjà bien le cadre.
-      const MAX_DIMENSION = 800;
+      // pas obligé de les respecter). On garde un plafond pour borner la
+      // taille du message envoyé au Worker, mais moins agressif qu'avant :
+      // le décodage étant maintenant isolé du thread principal (Worker +
+      // délai de secours), plus de résolution n'y coûte plus de fluidité —
+      // seulement une meilleure chance de lire des barres fines ou un code
+      // légèrement incliné.
+      const MAX_DIMENSION = 1280;
       intervalId = setInterval(() => {
         const video = videoRef.current;
         if (cancelled || restarting || !video) return;
