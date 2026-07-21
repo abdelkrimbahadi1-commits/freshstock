@@ -448,14 +448,12 @@ export default function ScanProduct({
           {knownProducts.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs opacity-60">{t("scan.knownProducts")}</p>
-              {knownProducts.length > 4 && (
-                <input
-                  value={knownProductsSearch}
-                  onChange={(e) => setKnownProductsSearch(e.target.value)}
-                  placeholder={t("scan.searchKnownProducts")}
-                  className="w-full rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm"
-                />
-              )}
+              <input
+                value={knownProductsSearch}
+                onChange={(e) => setKnownProductsSearch(e.target.value)}
+                placeholder={t("scan.searchKnownProducts")}
+                className="w-full rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm"
+              />
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {knownProducts
                   .filter((product) =>
