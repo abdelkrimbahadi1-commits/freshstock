@@ -15,6 +15,11 @@ function getStoredProductByBarcode(barcode: string): Promise<Product | undefined
   return db.products.where("barcode").equals(barcode).first();
 }
 
+export async function listLocalProducts(): Promise<Product[]> {
+  const products = await db.products.toArray();
+  return products.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function findLocalProductByBarcode(barcode: string): Promise<Product | null> {
   const existing = await getStoredProductByBarcode(barcode);
   if (existing) return existing;
