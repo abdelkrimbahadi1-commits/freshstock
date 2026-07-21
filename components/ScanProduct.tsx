@@ -159,9 +159,14 @@ export default function ScanProduct({
       });
     }
 
-    async function start() {
+    let lastVideoTime = -1;
+    let stalledSinceMs: number | null = null;
+    let restarting = false;
+    const STALL_RECOVERY_MS = 3000;
+
+    async function acquireStream(): Promise<boolean> {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
+        const newStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "environment",
             // Portrait, pas paysage : la plupart des téléphones sont tenus
@@ -173,47 +178,81 @@ export default function ScanProduct({
           },
         });
         if (cancelled || !videoRef.current) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
+          newStream.getTracks().forEach((track) => track.stop());
+          return false;
         }
-        videoRef.current.srcObject = stream;
+        stream?.getTracks().forEach((track) => track.stop());
+        stream = newStream;
+        videoRef.current.srcObject = newStream;
         await videoRef.current.play();
-
-        // La caméra d'un téléphone capture souvent en résolution native bien
-        // plus grande que les 720x1280 "ideal" demandés (le navigateur n'est
-        // pas obligé de les respecter). Sous-échantillonner réduit le volume
-        // de pixels à traiter par tentative sans nuire à la lisibilité d'un
-        // code-barres qui remplit déjà bien le cadre.
-        const MAX_DIMENSION = 800;
-        intervalId = setInterval(() => {
-          const video = videoRef.current;
-          if (cancelled || attemptInFlight || !video || !ctx || video.readyState < video.HAVE_CURRENT_DATA) {
-            return;
-          }
-          const scale = Math.min(1, MAX_DIMENSION / Math.max(video.videoWidth, video.videoHeight));
-          canvas.width = Math.round(video.videoWidth * scale);
-          canvas.height = Math.round(video.videoHeight * scale);
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const gray = new Uint8ClampedArray(canvas.width * canvas.height);
-          for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-            const alpha = data[i + 3];
-            gray[j] =
-              alpha === 0 ? 0xff : (306 * data[i] + 601 * data[i + 1] + 117 * data[i + 2] + 0x200) >> 10;
-          }
-
-          attemptInFlight = true;
-          void decodeOnce(gray, canvas.width, canvas.height).then((text) => {
-            attemptInFlight = false;
-            if (cancelled || !text) return;
-            setLastBarcode(text);
-            void handleDetected(text);
-          });
-        }, 500);
+        lastVideoTime = -1;
+        stalledSinceMs = null;
+        return true;
       } catch (err) {
         console.error("[ScanProduct] getUserMedia failed", err);
         if (!cancelled) setState("camera_error");
+        return false;
       }
+    }
+
+    async function start() {
+      const ok = await acquireStream();
+      if (!ok) return;
+
+      // La caméra d'un téléphone capture souvent en résolution native bien
+      // plus grande que les 720x1280 "ideal" demandés (le navigateur n'est
+      // pas obligé de les respecter). Sous-échantillonner réduit le volume
+      // de pixels à traiter par tentative sans nuire à la lisibilité d'un
+      // code-barres qui remplit déjà bien le cadre.
+      const MAX_DIMENSION = 800;
+      intervalId = setInterval(() => {
+        const video = videoRef.current;
+        if (cancelled || restarting || !video) return;
+
+        // Le décodage tourne désormais dans un Worker isolé avec délai de
+        // secours (cf. plus haut) : un blocage côté JS est donc exclu. Si
+        // l'aperçu reste figé malgré ça, c'est le flux caméra lui-même qui
+        // ne délivre plus de nouvelles images (ex. autofocus bloqué sur
+        // certains téléphones à très courte distance). currentTime avance
+        // en continu tant que de nouvelles images arrivent, même si la
+        // scène visuelle ne change pas — s'il stagne, on relance la caméra.
+        if (video.currentTime === lastVideoTime) {
+          if (stalledSinceMs === null) {
+            stalledSinceMs = Date.now();
+          } else if (Date.now() - stalledSinceMs > STALL_RECOVERY_MS) {
+            console.error("[ScanProduct] video stream stalled, restarting camera");
+            restarting = true;
+            void acquireStream().finally(() => {
+              restarting = false;
+            });
+            return;
+          }
+        } else {
+          stalledSinceMs = null;
+        }
+        lastVideoTime = video.currentTime;
+
+        if (attemptInFlight || !ctx || video.readyState < video.HAVE_CURRENT_DATA) return;
+        const scale = Math.min(1, MAX_DIMENSION / Math.max(video.videoWidth, video.videoHeight));
+        canvas.width = Math.round(video.videoWidth * scale);
+        canvas.height = Math.round(video.videoHeight * scale);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const gray = new Uint8ClampedArray(canvas.width * canvas.height);
+        for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+          const alpha = data[i + 3];
+          gray[j] =
+            alpha === 0 ? 0xff : (306 * data[i] + 601 * data[i + 1] + 117 * data[i + 2] + 0x200) >> 10;
+        }
+
+        attemptInFlight = true;
+        void decodeOnce(gray, canvas.width, canvas.height).then((text) => {
+          attemptInFlight = false;
+          if (cancelled || !text) return;
+          setLastBarcode(text);
+          void handleDetected(text);
+        });
+      }, 500);
     }
 
     void start();
