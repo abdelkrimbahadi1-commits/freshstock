@@ -1,7 +1,5 @@
 "use client";
 
-import { BarcodeFormat, BrowserMultiFormatReader } from "@zxing/browser";
-import { DecodeHintType } from "@zxing/library";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/LocaleProvider";
 import { lookupBarcode } from "@/lib/openFoodFacts";
@@ -94,30 +92,72 @@ export default function ScanProduct({
 
   useEffect(() => {
     if (state !== "scanning") return;
-    const hints = new Map();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-      BarcodeFormat.EAN_13,
-      BarcodeFormat.EAN_8,
-      BarcodeFormat.UPC_A,
-      BarcodeFormat.UPC_E,
-      // Petits producteurs/marques locales sans code EAN officiel utilisent
-      // souvent des étiquettes génériques dans l'un de ces formats.
-      BarcodeFormat.CODE_128,
-      BarcodeFormat.CODE_39,
-      BarcodeFormat.ITF,
-    ]);
-    const reader = new BrowserMultiFormatReader(hints);
     let cancelled = false;
     let stream: MediaStream | null = null;
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    let attemptInFlight = false;
+    let nextRequestId = 0;
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    // Décodage exécuté dans un Worker dédié (public/scan-worker.js) plutôt
+    // que dans ce thread : sur certains codes-barres réels (fond sombre,
+    // texte dense autour), l'algorithme de décodage peut rester bloqué
+    // anormalement longtemps, voire indéfiniment. Un blocage synchrone ici
+    // se verrait comme un aperçu caméra figé, sans transition, sans erreur —
+    // exactement ce qui a été observé. Un Worker peut être arrêté de force
+    // (terminate()) si une tentative ne répond pas dans le délai imparti,
+    // pour repartir sur une base saine sans jamais geler l'interface.
+    let worker: Worker | null = null;
+    function spawnWorker() {
+      worker?.terminate();
+      worker = new Worker("/scan-worker.js");
+    }
+    spawnWorker();
 
     function stop() {
       if (intervalId !== null) clearInterval(intervalId);
       stream?.getTracks().forEach((track) => track.stop());
+      worker?.terminate();
     }
     stopScanRef.current = stop;
+
+    function decodeOnce(gray: Uint8ClampedArray, width: number, height: number): Promise<string | null> {
+      return new Promise((resolve) => {
+        if (!worker) {
+          resolve(null);
+          return;
+        }
+        const id = ++nextRequestId;
+        const currentWorker = worker;
+        let settled = false;
+
+        const timeoutId = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          console.error("[ScanProduct] decode worker timed out, restarting");
+          spawnWorker();
+          resolve(null);
+        }, 2000);
+
+        currentWorker.onmessage = (event: MessageEvent) => {
+          if (settled || event.data?.id !== id) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          resolve(event.data.error ? null : (event.data.text as string));
+        };
+        currentWorker.onerror = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          spawnWorker();
+          resolve(null);
+        };
+
+        const buffer = gray.buffer.slice(0);
+        currentWorker.postMessage({ id, gray: new Uint8ClampedArray(buffer), width, height }, [buffer]);
+      });
+    }
 
     async function start() {
       try {
@@ -139,39 +179,36 @@ export default function ScanProduct({
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
 
-        // Boucle de décodage maison plutôt que decodeFromConstraints() : la
-        // boucle interne de zxing-browser n'attrape que ChecksumException/
-        // FormatException/NotFoundException pour relancer une tentative — un
-        // tout autre type d'erreur (déjà observé sur certains codes-barres
-        // réels) arrête la boucle définitivement, aperçu caméra "figé" sans
-        // aucun message. Ici, quelle que soit l'erreur, on retente toujours
-        // à l'intervalle suivant.
-        //
         // La caméra d'un téléphone capture souvent en résolution native bien
         // plus grande que les 720x1280 "ideal" demandés (le navigateur n'est
-        // pas obligé de les respecter). Décoder une image dense (fond
-        // sombre, beaucoup de texte) à pleine résolution peut bloquer le
-        // thread principal plusieurs secondes d'affilée — visuellement
-        // indiscernable d'un gel de l'aperçu. On sous-échantillonne donc
-        // l'image avant de la passer au décodeur : un code-barres qui remplit
-        // déjà bien le cadre reste parfaitement lisible à cette taille.
+        // pas obligé de les respecter). Sous-échantillonner réduit le volume
+        // de pixels à traiter par tentative sans nuire à la lisibilité d'un
+        // code-barres qui remplit déjà bien le cadre.
         const MAX_DIMENSION = 800;
         intervalId = setInterval(() => {
           const video = videoRef.current;
-          if (cancelled || !video || !ctx || video.readyState < video.HAVE_CURRENT_DATA) return;
-          try {
-            const scale = Math.min(1, MAX_DIMENSION / Math.max(video.videoWidth, video.videoHeight));
-            canvas.width = Math.round(video.videoWidth * scale);
-            canvas.height = Math.round(video.videoHeight * scale);
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const result = reader.decodeFromCanvas(canvas);
-            const barcode = result.getText();
-            setLastBarcode(barcode);
-            void handleDetected(barcode);
-          } catch {
-            // Rien détecté sur cette image : normal la plupart du temps,
-            // on retente à la prochaine.
+          if (cancelled || attemptInFlight || !video || !ctx || video.readyState < video.HAVE_CURRENT_DATA) {
+            return;
           }
+          const scale = Math.min(1, MAX_DIMENSION / Math.max(video.videoWidth, video.videoHeight));
+          canvas.width = Math.round(video.videoWidth * scale);
+          canvas.height = Math.round(video.videoHeight * scale);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const gray = new Uint8ClampedArray(canvas.width * canvas.height);
+          for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+            const alpha = data[i + 3];
+            gray[j] =
+              alpha === 0 ? 0xff : (306 * data[i] + 601 * data[i + 1] + 117 * data[i + 2] + 0x200) >> 10;
+          }
+
+          attemptInFlight = true;
+          void decodeOnce(gray, canvas.width, canvas.height).then((text) => {
+            attemptInFlight = false;
+            if (cancelled || !text) return;
+            setLastBarcode(text);
+            void handleDetected(text);
+          });
         }, 500);
       } catch (err) {
         console.error("[ScanProduct] getUserMedia failed", err);
