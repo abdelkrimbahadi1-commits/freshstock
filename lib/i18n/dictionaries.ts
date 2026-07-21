@@ -68,6 +68,7 @@ const fr: Dict = {
   "scan.takePhoto": "Prendre une photo du produit",
   "scan.retakePhoto": "Reprendre la photo",
   "scan.knownProducts": "Ou choisissez parmi vos produits déjà enregistrés :",
+  "scan.searchKnownProducts": "Rechercher par nom…",
 
   "form.unitPlaceholder": "unité",
   "form.expiryEstimate": "Péremption estimée : {date} ({days} j) — ajustez en 1 tap",
@@ -271,6 +272,7 @@ const en: Dict = {
   "scan.takePhoto": "Take a photo of the product",
   "scan.retakePhoto": "Retake photo",
   "scan.knownProducts": "Or pick from your already saved products:",
+  "scan.searchKnownProducts": "Search by name…",
 
   "form.unitPlaceholder": "unit",
   "form.expiryEstimate": "Estimated expiry: {date} ({days}d) — adjust in 1 tap",
