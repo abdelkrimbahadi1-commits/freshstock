@@ -43,24 +43,22 @@ export default function AvisPage() {
       </div>
 
       <div className="space-y-2">
-        <div className="flex gap-2 items-start">
-          <textarea
-            value={message}
-            onChange={(e) => {
-              setMessage(e.target.value);
-              setSent(false);
-            }}
-            placeholder={t("avis.placeholder")}
-            rows={4}
-            className="flex-1 rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm"
-          />
-          <VoiceDictationButton
-            onResult={(transcript) => {
-              setMessage((prev) => (prev ? `${prev} ${transcript}` : transcript));
-              setSent(false);
-            }}
-          />
-        </div>
+        <textarea
+          value={message}
+          onChange={(e) => {
+            setMessage(e.target.value);
+            setSent(false);
+          }}
+          placeholder={t("avis.placeholder")}
+          rows={4}
+          className="w-full rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm"
+        />
+        <VoiceDictationButton
+          onResult={(transcript) => {
+            setMessage((prev) => (prev ? `${prev} ${transcript}` : transcript));
+            setSent(false);
+          }}
+        />
         <p className="text-xs opacity-60">{t("avis.dictateHint")}</p>
 
         <button

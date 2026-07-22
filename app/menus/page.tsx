@@ -31,7 +31,7 @@ export default function MenusPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [peopleCount, setPeopleCount] = useState(BASE_SERVINGS);
   const [addedFeedback, setAddedFeedback] = useState<string | null>(null);
-  const [addedRecipeNames, setAddedRecipeNames] = useState<string[]>([]);
+  const [checkedRecipeIds, setCheckedRecipeIds] = useState<Set<string>>(new Set());
 
   async function refresh() {
     const [s, h] = await Promise.all([listActiveStock(), listRecentMealHistory()]);
@@ -86,18 +86,41 @@ export default function MenusPage() {
     await cookMenu(suggestion);
     await refresh();
     setCookedId(null);
+    setCheckedRecipeIds((prev) => {
+      const next = new Set(prev);
+      next.delete(suggestion.recipe.id);
+      return next;
+    });
     setDetailId(null);
   }
 
-  async function handleAddMissing(suggestion: MenuSuggestion) {
-    const recipeName = t(`recipe.${suggestion.recipe.id}.name`);
-    const toAdd = scaledIngredients(suggestion.missingIngredients);
-    await addMissingIngredients(toAdd, locale, recipeName);
-    setAddedFeedback(t("menus.addedFeedback", { count: toAdd.length }));
-    setAddedRecipeNames((prev) => (prev.includes(recipeName) ? prev : [...prev, recipeName]));
+  // "Je vais cuisiner ça" coche la recette (intention future, pas une
+  // confirmation d'avoir déjà mangé) : ses ingrédients manquants rejoignent
+  // la liste de courses, détaillés sous le nom de cette recette. Décocher
+  // retire juste la coche, sans toucher à la liste déjà constituée.
+  async function toggleCheckRecipe(suggestion: MenuSuggestion) {
+    const id = suggestion.recipe.id;
+    if (checkedRecipeIds.has(id)) {
+      setCheckedRecipeIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      return;
+    }
+    setCheckedRecipeIds((prev) => new Set(prev).add(id));
+    if (suggestion.missingIngredients.length > 0) {
+      const recipeName = t(`recipe.${id}.name`);
+      const toAdd = scaledIngredients(suggestion.missingIngredients);
+      await addMissingIngredients(toAdd, locale, recipeName);
+      setAddedFeedback(t("menus.addedFeedback", { count: toAdd.length }));
+    } else {
+      setAddedFeedback(null);
+    }
   }
 
   const detailSuggestion = suggestions.find((s) => s.recipe.id === detailId) ?? null;
+  const isDetailChecked = detailSuggestion ? checkedRecipeIds.has(detailSuggestion.recipe.id) : false;
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-6">
@@ -168,25 +191,19 @@ export default function MenusPage() {
             </div>
 
             <div className="flex gap-2 pt-1 flex-wrap">
-              {detailSuggestion.missingIngredients.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handleAddMissing(detailSuggestion)}
-                  className="rounded-lg bg-orange-500 text-white shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm"
-                >
-                  {t("menus.addMissingToShopping")}
-                </button>
-              )}
               <button
                 type="button"
-                onClick={() => handleCook(detailSuggestion)}
-                disabled={cookedId === detailSuggestion.recipe.id}
-                className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm disabled:opacity-40"
+                onClick={() => toggleCheckRecipe(detailSuggestion)}
+                className={`rounded-lg px-4 py-2 text-sm shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] ${
+                  isDetailChecked
+                    ? "bg-emerald-600 text-white"
+                    : "bg-accent text-accent-foreground"
+                }`}
               >
-                {cookedId === detailSuggestion.recipe.id ? "…" : t("menus.confirmCooked")}
+                {isDetailChecked ? t("menus.recipeChecked") : t("menus.planToCook")}
               </button>
             </div>
-            <p className="text-xs opacity-60">{t("menus.confirmCookedHint")}</p>
+            <p className="text-xs opacity-60">{t("menus.planToCookHint")}</p>
 
             {addedFeedback && (
               <p className="text-sm rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-3 py-2">
@@ -195,6 +212,17 @@ export default function MenusPage() {
                   {t("menus.seeShoppingList")}
                 </Link>
               </p>
+            )}
+
+            {isDetailChecked && (
+              <button
+                type="button"
+                onClick={() => handleCook(detailSuggestion)}
+                disabled={cookedId === detailSuggestion.recipe.id}
+                className="text-xs underline opacity-70 disabled:opacity-40"
+              >
+                {cookedId === detailSuggestion.recipe.id ? "…" : t("menus.finishCooking")}
+              </button>
             )}
           </div>
         </>
@@ -238,10 +266,18 @@ export default function MenusPage() {
 
           <ul className="space-y-3">
             {suggestions.map((s) => (
-              <li key={s.recipe.id} className="rounded-xl border border-black/10 dark:border-white/10 p-4 space-y-2">
+              <li
+                key={s.recipe.id}
+                className={`rounded-xl border p-4 space-y-2 ${
+                  checkedRecipeIds.has(s.recipe.id)
+                    ? "border-emerald-600/40 bg-emerald-50 dark:bg-emerald-950/40"
+                    : "border-black/10 dark:border-white/10"
+                }`}
+              >
                 <button type="button" onClick={() => openDetail(s)} className="w-full text-left space-y-2">
                   <div className="flex items-center justify-between">
                     <h3 className="font-medium underline decoration-dotted">
+                      {checkedRecipeIds.has(s.recipe.id) && <span aria-hidden="true">✓ </span>}
                       {t(`recipe.${s.recipe.id}.name`)}
                     </h3>
                     <span className="text-xs opacity-60">{t("menus.prepTime", { minutes: s.recipe.prep_time_minutes })}</span>
@@ -276,10 +312,14 @@ export default function MenusPage() {
 
           {!loading && suggestions.length === 0 && <p className="text-sm opacity-60">{t("menus.noMatch")}</p>}
 
-          {addedRecipeNames.length > 0 && (
+          {checkedRecipeIds.size > 0 && (
             <div className="rounded-xl border border-black/10 dark:border-white/10 p-4 space-y-1">
               <h2 className="text-sm font-medium">{t("menus.recapTitle")}</h2>
-              <p className="text-xs opacity-70">{addedRecipeNames.join(", ")}</p>
+              <p className="text-xs opacity-70">
+                {Array.from(checkedRecipeIds)
+                  .map((id) => t(`recipe.${id}.name`))
+                  .join(", ")}
+              </p>
               <Link href="/courses" className="text-sm underline text-accent">
                 {t("menus.seeShoppingList")}
               </Link>

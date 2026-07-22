@@ -81,13 +81,16 @@ export default function VoiceDictationButton({
       type="button"
       onClick={toggleListening}
       title={listening ? t("voice.stop") : t("voice.start")}
-      className={`shrink-0 rounded-lg border px-3 py-2 text-sm shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px] ${
+      className={`shrink-0 flex items-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium shadow-[0_2px_0_rgba(0,0,0,0.2)] dark:shadow-[0_2px_0_rgba(255,255,255,0.2)] active:shadow-none active:translate-y-[1px] ${
         listening
-          ? "bg-red-500 text-white border-transparent animate-pulse"
-          : "bg-white dark:bg-neutral-900 border-black/15 dark:border-white/15"
+          ? "bg-red-500 text-white border-red-600 animate-pulse"
+          : "bg-white dark:bg-neutral-900 border-accent text-accent"
       }`}
     >
-      <span aria-hidden="true">🎙</span>
+      <span aria-hidden="true" className="text-2xl leading-none">
+        🎙️
+      </span>
+      <span>{listening ? t("voice.stop") : t("voice.start")}</span>
     </button>
   );
 }
