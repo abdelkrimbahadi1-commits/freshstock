@@ -43,6 +43,9 @@ const fr: Dict = {
   "stock.expiresIn": "Périme dans {days} j",
   "stock.consumedTitle": "Consommé",
   "stock.discardedTitle": "Jeté",
+  "stock.expiryWarning": "{count} produit(s) périment dans 2 jours ou moins : {items}",
+  "stock.dismissWarning": "Ignorer",
+  "stock.snoozeWarning": "Me rappeler plus tard",
 
   "location.frigo": "Frigo",
   "location.congelateur": "Congélateur",
@@ -106,6 +109,8 @@ const fr: Dict = {
   "menus.addedFeedback": "{count} ingrédient(s) ajouté(s) à votre liste de courses.",
   "menus.seeShoppingList": "Voir la liste de courses →",
   "menus.recapTitle": "Ingrédients ajoutés à vos courses pour :",
+  "menus.confirmCooked": "Valider : j'ai cuisiné ce plat",
+  "menus.confirmCookedHint": "Les ingrédients utilisés seront retirés de votre stock et ce repas sera ajouté à votre historique.",
 
   "reason.expiringSoon": "Utilise {count} produit(s) qui périme(nt) bientôt : {items}",
   "reason.repeatedThisWeek": "Déjà préparé {count} fois cette semaine — un peu de répétition",
@@ -136,6 +141,7 @@ const fr: Dict = {
   "courses.add": "Ajouter à la liste",
   "courses.empty": "Liste vide. Elle se remplit aussi automatiquement depuis les menus que vous choisissez.",
   "courses.forRecipes": "Ingrédients pour vos recettes",
+  "courses.otherRecipeIngredients": "Autres recettes",
   "courses.periodPurchases": "Achats de la période",
   "courses.purchased": "Articles achetés",
   "courses.quantityToBuy": "Quantité à acheter :",
@@ -148,6 +154,8 @@ const fr: Dict = {
   "budget.wasteLost": "Perdu en produits jetés ce mois-ci",
   "budget.hint": "Ajoutez un prix lors de vos ajouts au stock pour voir ces chiffres se remplir.",
   "budget.detailEmpty": "Aucun produit avec un prix renseigné pour cette catégorie.",
+  "budget.wasteAvoidedRule": "Compte les produits consommés dans les 2 jours avant leur date de péremption (gaspillage évité de justesse).",
+  "budget.missingPriceHint": "{count} produit(s) concerné(s) mais sans prix renseigné, donc non comptabilisé(s) ici.",
 
   "foyer.title": "Mon foyer",
   "foyer.localModePrefix": "Backend non connecté : vous utilisez un foyer local à cet appareil (id",
@@ -293,6 +301,9 @@ const en: Dict = {
   "stock.expiresIn": "Expires in {days}d",
   "stock.consumedTitle": "Consumed",
   "stock.discardedTitle": "Discarded",
+  "stock.expiryWarning": "{count} item(s) expiring in 2 days or less: {items}",
+  "stock.dismissWarning": "Dismiss",
+  "stock.snoozeWarning": "Remind me later",
 
   "location.frigo": "Fridge",
   "location.congelateur": "Freezer",
@@ -356,6 +367,8 @@ const en: Dict = {
   "menus.addedFeedback": "{count} ingredient(s) added to your shopping list.",
   "menus.seeShoppingList": "See the shopping list →",
   "menus.recapTitle": "Ingredients added to your shopping list for:",
+  "menus.confirmCooked": "Confirm: I cooked this",
+  "menus.confirmCookedHint": "The ingredients used will be removed from your stock and this meal will be added to your history.",
 
   "reason.expiringSoon": "Uses {count} item(s) expiring soon: {items}",
   "reason.repeatedThisWeek": "Already made {count} time(s) this week — a bit repetitive",
@@ -386,6 +399,7 @@ const en: Dict = {
   "courses.add": "Add to list",
   "courses.empty": "List is empty. It also fills automatically from the menus you choose.",
   "courses.forRecipes": "Ingredients for your recipes",
+  "courses.otherRecipeIngredients": "Other recipes",
   "courses.periodPurchases": "Purchases for this period",
   "courses.purchased": "Purchased items",
   "courses.quantityToBuy": "Quantity to buy:",
@@ -398,6 +412,8 @@ const en: Dict = {
   "budget.wasteLost": "Lost to discarded products this month",
   "budget.hint": "Add a price when adding items to stock to see these numbers fill in.",
   "budget.detailEmpty": "No priced product for this category.",
+  "budget.wasteAvoidedRule": "Counts products consumed within 2 days of their expiry date (waste avoided just in time).",
+  "budget.missingPriceHint": "{count} product(s) qualify but have no price set, so they aren't counted here.",
 
   "foyer.title": "My household",
   "foyer.localModePrefix": "Backend not connected: you're using a household local to this device (id",

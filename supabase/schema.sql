@@ -71,8 +71,13 @@ create table if not exists shopping_list (
   quantity numeric not null default 1,
   unit text not null default 'unite',
   source text not null default 'manual' check (source in ('manual', 'auto')),
+  recipe_name text,
   checked boolean not null default false
 );
+
+-- Ajoutée après la création initiale de la table : `alter` idempotent pour
+-- les projets Supabase où `shopping_list` existait déjà sans cette colonne.
+alter table shopping_list add column if not exists recipe_name text;
 
 -- Helper: l'utilisateur courant appartient-il à ce foyer ?
 create or replace function is_household_member(target_household_id uuid)

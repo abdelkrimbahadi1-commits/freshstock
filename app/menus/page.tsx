@@ -90,13 +90,11 @@ export default function MenusPage() {
   }
 
   async function handleAddMissing(suggestion: MenuSuggestion) {
+    const recipeName = t(`recipe.${suggestion.recipe.id}.name`);
     const toAdd = scaledIngredients(suggestion.missingIngredients);
-    await addMissingIngredients(toAdd, locale);
+    await addMissingIngredients(toAdd, locale, recipeName);
     setAddedFeedback(t("menus.addedFeedback", { count: toAdd.length }));
-    setAddedRecipeNames((prev) => {
-      const recipeName = t(`recipe.${suggestion.recipe.id}.name`);
-      return prev.includes(recipeName) ? prev : [...prev, recipeName];
-    });
+    setAddedRecipeNames((prev) => (prev.includes(recipeName) ? prev : [...prev, recipeName]));
   }
 
   const detailSuggestion = suggestions.find((s) => s.recipe.id === detailId) ?? null;
@@ -170,24 +168,25 @@ export default function MenusPage() {
             </div>
 
             <div className="flex gap-2 pt-1 flex-wrap">
+              {detailSuggestion.missingIngredients.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleAddMissing(detailSuggestion)}
+                  className="rounded-lg bg-orange-500 text-white shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm"
+                >
+                  {t("menus.addMissingToShopping")}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleCook(detailSuggestion)}
                 disabled={cookedId === detailSuggestion.recipe.id}
                 className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm disabled:opacity-40"
               >
-                {cookedId === detailSuggestion.recipe.id ? "…" : t("menus.cookThis")}
+                {cookedId === detailSuggestion.recipe.id ? "…" : t("menus.confirmCooked")}
               </button>
-              {detailSuggestion.missingIngredients.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handleAddMissing(detailSuggestion)}
-                  className="rounded-lg border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm"
-                >
-                  {t("menus.addMissingToShopping")}
-                </button>
-              )}
             </div>
+            <p className="text-xs opacity-60">{t("menus.confirmCookedHint")}</p>
 
             {addedFeedback && (
               <p className="text-sm rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-3 py-2">

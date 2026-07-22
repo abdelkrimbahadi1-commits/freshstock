@@ -10,6 +10,10 @@ import type { StockItem, StockLocation } from "@/lib/types";
 
 const LOCATION_ORDER: StockLocation[] = ["frigo", "congelateur", "placard", "autre"];
 
+const EXPIRY_WARNING_DAYS = 2;
+const SNOOZE_KEY = "freshstock_expiry_banner_snoozed_until";
+const SNOOZE_HOURS = 4;
+
 function expiryBadgeClass(days: number): string {
   if (days <= 1) return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
   if (days <= 3) return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
@@ -24,6 +28,7 @@ export default function StockPage() {
   const [mode, setMode] = useState<Mode>("list");
   const [resolved, setResolved] = useState<ResolvedProduct | null>(null);
   const [loading, setLoading] = useState(true);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   function expiryLabel(days: number): string {
     if (days < 0) return t("stock.expiredSince", { days: Math.abs(days) });
@@ -39,6 +44,8 @@ export default function StockPage() {
 
   useEffect(() => {
     void refresh();
+    const snoozedUntil = Number(localStorage.getItem(SNOOZE_KEY) ?? 0);
+    if (snoozedUntil > Date.now()) setBannerDismissed(true);
   }, []);
 
   async function handleStatus(id: string, status: "consumed" | "discarded") {
@@ -46,10 +53,17 @@ export default function StockPage() {
     void refresh();
   }
 
+  function snoozeBanner() {
+    localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_HOURS * 3600_000));
+    setBannerDismissed(true);
+  }
+
   const grouped = LOCATION_ORDER.map((loc) => ({
     location: loc,
     items: items.filter((i) => i.location === loc),
   })).filter((g) => g.items.length > 0);
+
+  const expiringSoonItems = items.filter((i) => daysUntilExpiry(i.expiry_date) <= EXPIRY_WARNING_DAYS);
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-6">
@@ -106,6 +120,28 @@ export default function StockPage() {
 
       {mode === "list" && (
         <>
+          {!loading && !bannerDismissed && expiringSoonItems.length > 0 && (
+            <div className="rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 p-4 space-y-2">
+              <p className="text-sm font-medium">
+                {t("stock.expiryWarning", {
+                  count: expiringSoonItems.length,
+                  items: expiringSoonItems.map((i) => i.name).join(", "),
+                })}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBannerDismissed(true)}
+                  className="text-xs underline"
+                >
+                  {t("stock.dismissWarning")}
+                </button>
+                <button type="button" onClick={snoozeBanner} className="text-xs underline">
+                  {t("stock.snoozeWarning")}
+                </button>
+              </div>
+            </div>
+          )}
           {loading && <p className="text-sm opacity-60">{t("common.loading")}</p>}
           {!loading && items.length === 0 && <p className="text-sm opacity-60">{t("stock.empty")}</p>}
           {grouped.map((group) => (
