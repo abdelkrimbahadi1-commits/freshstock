@@ -8,6 +8,8 @@ import {
   itemsForMonthlySpend,
   itemsForWasteAvoided,
   itemsForWasteLost,
+  missingPriceConsumedCount,
+  missingPriceDiscardedCount,
   type BudgetSummary,
 } from "@/lib/budget";
 import { listAllStockItems } from "@/lib/stock";
@@ -48,11 +50,23 @@ export default function BudgetPage() {
 
   if (detail) {
     const total = detailItems.reduce((sum, i) => sum + (i.price ?? 0), 0);
+    const missingPriceCount =
+      detail === "wasteAvoided"
+        ? missingPriceConsumedCount(items)
+        : detail === "wasteLost"
+          ? missingPriceDiscardedCount(items)
+          : 0;
     return (
       <div className="max-w-2xl mx-auto p-4 space-y-4">
         <BackButton onClick={() => setDetail(null)} />
         <h1 className="text-xl font-semibold">{detailTitle}</h1>
+        {detail === "wasteAvoided" && <p className="text-xs opacity-60">{t("budget.wasteAvoidedRule")}</p>}
         <p className="text-2xl font-semibold">{total.toFixed(2)} €</p>
+        {missingPriceCount > 0 && (
+          <p className="text-xs rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 px-3 py-2">
+            {t("budget.missingPriceHint", { count: missingPriceCount })}
+          </p>
+        )}
         {detailItems.length === 0 ? (
           <p className="text-sm opacity-60">{t("budget.detailEmpty")}</p>
         ) : (

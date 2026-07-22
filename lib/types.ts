@@ -84,7 +84,15 @@ export interface ShoppingListItem {
   quantity: number;
   unit: string;
   source: "manual" | "auto";
+  recipe_name: string | null; // nom de la recette d'origine si source === "auto"
   checked: boolean;
+}
+
+export interface Feedback {
+  id: string;
+  household_id: string;
+  message: string;
+  created_at: string;
 }
 
 export interface Household {

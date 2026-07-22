@@ -31,7 +31,8 @@ export async function addShoppingListItem(
   item_name: string,
   quantity: number,
   unit: string,
-  source: "manual" | "auto" = "manual"
+  source: "manual" | "auto" = "manual",
+  recipeName: string | null = null
 ): Promise<void> {
   const householdId = getHouseholdId();
   const existing = await db.shopping_list
@@ -39,7 +40,20 @@ export async function addShoppingListItem(
     .equals(householdId)
     .and((i) => !i.checked && i.item_name.toLowerCase() === item_name.toLowerCase())
     .first();
-  if (existing) return; // déjà sur la liste, on évite le doublon
+  if (existing) {
+    // Même ingrédient déjà sur la liste (ex. utilisé par une autre recette) :
+    // on évite le doublon mais on garde la trace de toutes les recettes concernées.
+    if (recipeName && existing.source === "auto") {
+      const names = new Set((existing.recipe_name ?? "").split(", ").filter(Boolean));
+      if (!names.has(recipeName)) {
+        names.add(recipeName);
+        const updated = { ...existing, recipe_name: Array.from(names).join(", ") };
+        await db.shopping_list.put(updated);
+        await queueWrite("shopping_list", "upsert", updated as unknown as Record<string, unknown>);
+      }
+    }
+    return;
+  }
 
   const entry: ShoppingListItem = {
     id: crypto.randomUUID(),
@@ -48,6 +62,7 @@ export async function addShoppingListItem(
     quantity,
     unit,
     source,
+    recipe_name: recipeName,
     checked: false,
   };
   await db.shopping_list.put(entry);
@@ -56,10 +71,17 @@ export async function addShoppingListItem(
 
 export async function addMissingIngredients(
   ingredients: RecipeIngredient[],
-  locale: Locale
+  locale: Locale,
+  recipeName: string
 ): Promise<void> {
   for (const ing of ingredients) {
-    await addShoppingListItem(translate(locale, `ingredient.${ing.key}`), ing.quantity, ing.unit, "auto");
+    await addShoppingListItem(
+      translate(locale, `ingredient.${ing.key}`),
+      ing.quantity,
+      ing.unit,
+      "auto",
+      recipeName
+    );
   }
 }
 

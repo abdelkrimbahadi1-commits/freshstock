@@ -104,6 +104,12 @@ export default function FoyerPage() {
     }
   }
 
+  const feedbackLink = (
+    <Link href="/avis" className="inline-block text-sm underline text-accent">
+      {t("foyer.giveFeedbackLink")}
+    </Link>
+  );
+
   if (!isSupabaseConfigured) {
     return (
       <div className="max-w-md mx-auto p-4 space-y-3">
@@ -116,6 +122,7 @@ export default function FoyerPage() {
           </Link>
           .
         </p>
+        {feedbackLink}
       </div>
     );
   }
@@ -133,6 +140,7 @@ export default function FoyerPage() {
         >
           {t("login.signIn")}
         </Link>
+        <div>{feedbackLink}</div>
       </div>
     );
   }
@@ -187,6 +195,7 @@ export default function FoyerPage() {
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {feedbackLink}
       </div>
     );
   }
@@ -261,6 +270,7 @@ export default function FoyerPage() {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {feedbackLink}
     </div>
   );
 }
