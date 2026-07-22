@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import ExpiryDatePicker from "@/components/ExpiryDatePicker";
 import { useLocale } from "@/components/LocaleProvider";
 import { saveLocalProduct } from "@/lib/products";
 import { addStockItem } from "@/lib/stock";
@@ -12,19 +13,6 @@ function addDays(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
-}
-
-function parseIsoDate(iso: string): { day: number; month: number; year: number } {
-  const [year, month, day] = iso.split("-").map(Number);
-  return { day, month, year };
-}
-
-function toIsoDate(day: number, month: number, year: number): string {
-  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-function daysInMonth(month: number, year: number): number {
-  return new Date(year, month, 0).getDate();
 }
 
 export default function AddStockItemForm({
@@ -140,57 +128,7 @@ export default function AddStockItemForm({
 
       <div>
         <p className="text-xs opacity-60 mb-1">{t("form.expiryLabel")}</p>
-        {(() => {
-          const { day, month, year } = parseIsoDate(expiryDate);
-          const days = Array.from({ length: daysInMonth(month, year) }, (_, i) => i + 1);
-          const months = Array.from({ length: 12 }, (_, i) => i + 1);
-          const years = Array.from({ length: 6 }, (_, i) => year - 1 + i);
-          return (
-            <div className="flex gap-2">
-              <select
-                value={day}
-                onChange={(e) => setExpiryDate(toIsoDate(Number(e.target.value), month, year))}
-                className="flex-1 rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-2 py-2 text-sm"
-              >
-                {days.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={month}
-                onChange={(e) => {
-                  const m = Number(e.target.value);
-                  const clampedDay = Math.min(day, daysInMonth(m, year));
-                  setExpiryDate(toIsoDate(clampedDay, m, year));
-                }}
-                className="flex-1 rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-2 py-2 text-sm"
-              >
-                {months.map((m) => (
-                  <option key={m} value={m}>
-                    {t(`month.${m}`)}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={year}
-                onChange={(e) => {
-                  const y = Number(e.target.value);
-                  const clampedDay = Math.min(day, daysInMonth(month, y));
-                  setExpiryDate(toIsoDate(clampedDay, month, y));
-                }}
-                className="flex-1 rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-2 py-2 text-sm"
-              >
-                {years.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
-          );
-        })()}
+        <ExpiryDatePicker value={expiryDate} onChange={setExpiryDate} />
       </div>
 
       <input

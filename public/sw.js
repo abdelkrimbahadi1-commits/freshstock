@@ -1,4 +1,4 @@
-const CACHE_NAME = "freshstock-v7";
+const CACHE_NAME = "freshstock-v8";
 const APP_SHELL = [
   "/",
   "/stock",

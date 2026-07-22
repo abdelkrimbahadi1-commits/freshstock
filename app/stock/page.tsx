@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import AddStockItemForm from "@/components/AddStockItemForm";
 import BackButton from "@/components/BackButton";
+import ExpiryDatePicker from "@/components/ExpiryDatePicker";
 import { useLocale } from "@/components/LocaleProvider";
 import ScanProduct, { type ResolvedProduct } from "@/components/ScanProduct";
-import { daysUntilExpiry, listActiveStock, setStockItemStatus } from "@/lib/stock";
+import { daysUntilExpiry, listActiveStock, setStockItemStatus, updateExpiryDate } from "@/lib/stock";
 import type { StockItem, StockLocation } from "@/lib/types";
 
 const LOCATION_ORDER: StockLocation[] = ["frigo", "congelateur", "placard", "autre"];
@@ -29,6 +30,8 @@ export default function StockPage() {
   const [resolved, setResolved] = useState<ResolvedProduct | null>(null);
   const [loading, setLoading] = useState(true);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [editingExpiryId, setEditingExpiryId] = useState<string | null>(null);
+  const [pendingExpiryDate, setPendingExpiryDate] = useState("");
 
   function expiryLabel(days: number): string {
     if (days < 0) return t("stock.expiredSince", { days: Math.abs(days) });
@@ -56,6 +59,21 @@ export default function StockPage() {
   function snoozeBanner() {
     localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_HOURS * 3600_000));
     setBannerDismissed(true);
+  }
+
+  function openExpiryEditor(item: StockItem) {
+    if (editingExpiryId === item.id) {
+      setEditingExpiryId(null);
+      return;
+    }
+    setEditingExpiryId(item.id);
+    setPendingExpiryDate(item.expiry_date);
+  }
+
+  async function saveExpiryEditor(id: string) {
+    await updateExpiryDate(id, pendingExpiryDate);
+    setEditingExpiryId(null);
+    void refresh();
   }
 
   const grouped = LOCATION_ORDER.map((loc) => ({
@@ -153,37 +171,55 @@ export default function StockPage() {
                   return (
                     <li
                       key={item.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-black/10 dark:border-white/10 p-3"
+                      className="rounded-xl border border-black/10 dark:border-white/10 p-3 space-y-2"
                     >
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{item.name}</p>
-                        <p className="text-xs opacity-60">
-                          {item.quantity} {item.unit}
-                        </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{item.name}</p>
+                          <p className="text-xs opacity-60">
+                            {item.quantity} {item.unit}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => openExpiryEditor(item)}
+                            title={t("stock.editExpiryTitle")}
+                            className={`text-xs rounded-full px-2 py-1 whitespace-nowrap ${expiryBadgeClass(days)}`}
+                          >
+                            {expiryLabel(days)}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStatus(item.id, "consumed")}
+                            title={t("stock.consumedTitle")}
+                            className="flex items-center gap-1 text-xs rounded-lg border border-emerald-600/40 bg-white dark:bg-neutral-900 text-emerald-700 dark:text-emerald-400 px-2 py-1 whitespace-nowrap shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px]"
+                          >
+                            <span aria-hidden="true">✓</span> {t("stock.consumedTitle")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStatus(item.id, "discarded")}
+                            title={t("stock.discardedTitle")}
+                            className="flex items-center gap-1 text-xs rounded-lg border border-red-600/40 bg-white dark:bg-neutral-900 text-red-700 dark:text-red-400 px-2 py-1 whitespace-nowrap shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px]"
+                          >
+                            <span aria-hidden="true">🗑</span> {t("stock.discardedTitle")}
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span
-                          className={`text-xs rounded-full px-2 py-1 whitespace-nowrap ${expiryBadgeClass(days)}`}
-                        >
-                          {expiryLabel(days)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleStatus(item.id, "consumed")}
-                          title={t("stock.consumedTitle")}
-                          className="flex items-center gap-1 text-xs rounded-lg border border-emerald-600/40 bg-white dark:bg-neutral-900 text-emerald-700 dark:text-emerald-400 px-2 py-1 whitespace-nowrap shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px]"
-                        >
-                          <span aria-hidden="true">✓</span> {t("stock.consumedTitle")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleStatus(item.id, "discarded")}
-                          title={t("stock.discardedTitle")}
-                          className="flex items-center gap-1 text-xs rounded-lg border border-red-600/40 bg-white dark:bg-neutral-900 text-red-700 dark:text-red-400 px-2 py-1 whitespace-nowrap shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px]"
-                        >
-                          <span aria-hidden="true">🗑</span> {t("stock.discardedTitle")}
-                        </button>
-                      </div>
+                      {editingExpiryId === item.id && (
+                        <div className="border-t border-black/10 dark:border-white/10 pt-2 space-y-2">
+                          <p className="text-xs opacity-60">{t("form.expiryLabel")}</p>
+                          <ExpiryDatePicker value={pendingExpiryDate} onChange={setPendingExpiryDate} />
+                          <button
+                            type="button"
+                            onClick={() => saveExpiryEditor(item.id)}
+                            className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-3 py-1.5 text-xs"
+                          >
+                            {t("common.confirm")}
+                          </button>
+                        </div>
+                      )}
                     </li>
                   );
                 })}

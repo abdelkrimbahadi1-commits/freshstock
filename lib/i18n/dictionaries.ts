@@ -43,6 +43,7 @@ const fr: Dict = {
   "stock.expiresIn": "Périme dans {days} j",
   "stock.consumedTitle": "Consommé",
   "stock.discardedTitle": "Jeté",
+  "stock.editExpiryTitle": "Modifier la date de péremption",
   "stock.expiryWarning": "{count} produit(s) périment dans 2 jours ou moins : {items}",
   "stock.dismissWarning": "Ignorer",
   "stock.snoozeWarning": "Me rappeler plus tard",
@@ -180,6 +181,18 @@ const fr: Dict = {
   "foyer.approve": "Approuver",
   "foyer.reject": "Refuser",
   "foyer.approvalCodeToShare": "Demande approuvée. Transmettez ce code au demandeur : {code}",
+  "foyer.giveFeedbackLink": "Donner votre avis sur l'app →",
+
+  "voice.start": "Dicter à l'oral",
+  "voice.stop": "Arrêter la dictée",
+
+  "avis.title": "Votre avis",
+  "avis.subtitle": "Une remarque, une idée ? Écrivez-la ou dictez-la à l'oral.",
+  "avis.placeholder": "Votre avis, remarque ou suggestion…",
+  "avis.dictateHint": "Pas le temps d'écrire ? Appuyez sur 🎙 et parlez, votre message sera transcrit automatiquement.",
+  "avis.submit": "Envoyer",
+  "avis.thanks": "Merci, votre avis a bien été enregistré !",
+  "avis.historyTitle": "Vos avis précédents",
 
   "login.title": "Compte & partage foyer",
   "login.notConfigured": "Le backend Supabase n'est pas encore configuré pour ce projet. L'app fonctionne pour l'instant en mode local (stock, menus et courses sur cet appareil uniquement). Créez un projet sur supabase.com, renseignez NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY dans .env.local, puis exécutez supabase/schema.sql pour activer les comptes et le partage foyer.",
@@ -301,6 +314,7 @@ const en: Dict = {
   "stock.expiresIn": "Expires in {days}d",
   "stock.consumedTitle": "Consumed",
   "stock.discardedTitle": "Discarded",
+  "stock.editExpiryTitle": "Edit the expiry date",
   "stock.expiryWarning": "{count} item(s) expiring in 2 days or less: {items}",
   "stock.dismissWarning": "Dismiss",
   "stock.snoozeWarning": "Remind me later",
@@ -438,6 +452,18 @@ const en: Dict = {
   "foyer.approve": "Approve",
   "foyer.reject": "Reject",
   "foyer.approvalCodeToShare": "Request approved. Share this code with the requester: {code}",
+  "foyer.giveFeedbackLink": "Give feedback on the app →",
+
+  "voice.start": "Dictate out loud",
+  "voice.stop": "Stop dictating",
+
+  "avis.title": "Your feedback",
+  "avis.subtitle": "A remark, an idea? Write it or dictate it out loud.",
+  "avis.placeholder": "Your feedback, remark or suggestion…",
+  "avis.dictateHint": "No time to type? Tap 🎙 and speak, your message will be transcribed automatically.",
+  "avis.submit": "Send",
+  "avis.thanks": "Thanks, your feedback has been saved!",
+  "avis.historyTitle": "Your previous feedback",
 
   "login.title": "Account & household sharing",
   "login.notConfigured": "The Supabase backend isn't configured for this project yet. The app currently runs in local mode (stock, menus and shopping list on this device only). Create a project on supabase.com, set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local, then run supabase/schema.sql to enable accounts and household sharing.",

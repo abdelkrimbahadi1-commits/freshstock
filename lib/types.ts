@@ -88,6 +88,13 @@ export interface ShoppingListItem {
   checked: boolean;
 }
 
+export interface Feedback {
+  id: string;
+  household_id: string;
+  message: string;
+  created_at: string;
+}
+
 export interface Household {
   id: string;
   name: string;

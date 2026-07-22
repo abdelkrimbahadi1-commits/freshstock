@@ -7,7 +7,7 @@ import { createClient } from "./supabase/client";
 // Dexie reste la source de vérité locale ; Supabase n'est qu'une réplique
 // distante rejouée dès que le réseau et l'auth sont disponibles.
 export async function queueWrite(
-  table: "stock_items" | "shopping_list",
+  table: "stock_items" | "shopping_list" | "feedback",
   op: "upsert" | "delete",
   payload: Record<string, unknown>
 ) {

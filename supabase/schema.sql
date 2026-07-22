@@ -79,6 +79,14 @@ create table if not exists shopping_list (
 -- les projets Supabase où `shopping_list` existait déjà sans cette colonne.
 alter table shopping_list add column if not exists recipe_name text;
 
+-- Avis utilisateurs (écrits ou dictés à l'oral puis transcrits côté client).
+create table if not exists feedback (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references households (id) on delete cascade,
+  message text not null,
+  created_at timestamptz not null default now()
+);
+
 -- Helper: l'utilisateur courant appartient-il à ce foyer ?
 create or replace function is_household_member(target_household_id uuid)
 returns boolean
@@ -100,6 +108,7 @@ alter table stock_items enable row level security;
 alter table recipes enable row level security;
 alter table meal_history enable row level security;
 alter table shopping_list enable row level security;
+alter table feedback enable row level security;
 
 -- households : visible/modifiable par ses membres, création libre pour un user authentifié.
 create policy "households_select_members" on households
@@ -132,6 +141,10 @@ create policy "meal_history_all_members" on meal_history
   with check (is_household_member(household_id));
 
 create policy "shopping_list_all_members" on shopping_list
+  for all using (is_household_member(household_id))
+  with check (is_household_member(household_id));
+
+create policy "feedback_all_members" on feedback
   for all using (is_household_member(household_id))
   with check (is_household_member(household_id));
 
