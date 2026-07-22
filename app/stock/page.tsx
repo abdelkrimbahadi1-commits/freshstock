@@ -135,7 +135,7 @@ export default function StockPage() {
                           type="button"
                           onClick={() => handleStatus(item.id, "consumed")}
                           title={t("stock.consumedTitle")}
-                          className="flex items-center gap-1 text-xs rounded-lg border border-emerald-600/40 text-emerald-700 dark:text-emerald-400 px-2 py-1 whitespace-nowrap"
+                          className="flex items-center gap-1 text-xs rounded-lg border border-emerald-600/40 bg-white dark:bg-neutral-900 text-emerald-700 dark:text-emerald-400 px-2 py-1 whitespace-nowrap shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px]"
                         >
                           <span aria-hidden="true">✓</span> {t("stock.consumedTitle")}
                         </button>
@@ -143,7 +143,7 @@ export default function StockPage() {
                           type="button"
                           onClick={() => handleStatus(item.id, "discarded")}
                           title={t("stock.discardedTitle")}
-                          className="flex items-center gap-1 text-xs rounded-lg border border-red-600/40 text-red-700 dark:text-red-400 px-2 py-1 whitespace-nowrap"
+                          className="flex items-center gap-1 text-xs rounded-lg border border-red-600/40 bg-white dark:bg-neutral-900 text-red-700 dark:text-red-400 px-2 py-1 whitespace-nowrap shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px]"
                         >
                           <span aria-hidden="true">🗑</span> {t("stock.discardedTitle")}
                         </button>
