@@ -12,6 +12,21 @@ export async function listShoppingList(): Promise<ShoppingListItem[]> {
   return db.shopping_list.where("household_id").equals(householdId).toArray();
 }
 
+// Noms d'articles déjà vus (courses passées + produits scannés/enregistrés),
+// proposés dans une liste déroulante pour éviter de ressaisir à chaque fois
+// un article déjà connu.
+export async function listKnownArticleNames(): Promise<string[]> {
+  const householdId = getHouseholdId();
+  const [items, products] = await Promise.all([
+    db.shopping_list.where("household_id").equals(householdId).toArray(),
+    db.products.toArray(),
+  ]);
+  const names = new Set<string>();
+  for (const item of items) names.add(item.item_name);
+  for (const product of products) names.add(product.name);
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
+}
+
 export async function addShoppingListItem(
   item_name: string,
   quantity: number,

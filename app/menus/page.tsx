@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import BackButton from "@/components/BackButton";
 import { useLocale } from "@/components/LocaleProvider";
@@ -29,6 +30,8 @@ export default function MenusPage() {
   const [cookedId, setCookedId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [peopleCount, setPeopleCount] = useState(BASE_SERVINGS);
+  const [addedFeedback, setAddedFeedback] = useState<string | null>(null);
+  const [addedRecipeNames, setAddedRecipeNames] = useState<string[]>([]);
 
   async function refresh() {
     const [s, h] = await Promise.all([listActiveStock(), listRecentMealHistory()]);
@@ -67,6 +70,7 @@ export default function MenusPage() {
   function openDetail(suggestion: MenuSuggestion) {
     setDetailId(suggestion.recipe.id);
     setPeopleCount(BASE_SERVINGS);
+    setAddedFeedback(null);
   }
 
   function scaledIngredients(ingredients: RecipeIngredient[]): RecipeIngredient[] {
@@ -86,7 +90,13 @@ export default function MenusPage() {
   }
 
   async function handleAddMissing(suggestion: MenuSuggestion) {
-    await addMissingIngredients(scaledIngredients(suggestion.missingIngredients), locale);
+    const toAdd = scaledIngredients(suggestion.missingIngredients);
+    await addMissingIngredients(toAdd, locale);
+    setAddedFeedback(t("menus.addedFeedback", { count: toAdd.length }));
+    setAddedRecipeNames((prev) => {
+      const recipeName = t(`recipe.${suggestion.recipe.id}.name`);
+      return prev.includes(recipeName) ? prev : [...prev, recipeName];
+    });
   }
 
   const detailSuggestion = suggestions.find((s) => s.recipe.id === detailId) ?? null;
@@ -113,10 +123,21 @@ export default function MenusPage() {
               />
             </div>
 
+            <div className="space-y-1">
+              <h2 className="text-sm font-medium">{t("menus.neededIngredientsTitle")}</h2>
+              <ul className="text-sm list-disc list-inside space-y-0.5 opacity-80">
+                {scaledIngredients(detailSuggestion.recipe.ingredients).map((i) => (
+                  <li key={i.key}>
+                    {t(`ingredient.${i.key}`)} — {i.quantity} {i.unit}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
             {detailSuggestion.missingIngredients.length > 0 ? (
               <div className="space-y-1">
                 <h2 className="text-sm font-medium">{t("menus.missingIngredientsTitle")}</h2>
-                <ul className="text-sm list-disc list-inside space-y-0.5 opacity-80">
+                <ul className="text-sm list-disc list-inside space-y-0.5 text-amber-700 dark:text-amber-400">
                   {scaledIngredients(detailSuggestion.missingIngredients).map((i) => (
                     <li key={i.key}>
                       {t(`ingredient.${i.key}`)} — {i.quantity} {i.unit}
@@ -125,7 +146,9 @@ export default function MenusPage() {
                 </ul>
               </div>
             ) : (
-              <p className="text-sm opacity-60">{t("menus.nothingMissing")}</p>
+              <p className="text-sm rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-3 py-2">
+                {t("menus.nothingMissing")}
+              </p>
             )}
 
             <div>
@@ -137,7 +160,7 @@ export default function MenusPage() {
                       href={link.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm underline text-blue-700 dark:text-blue-400"
+                      className="text-sm underline text-accent"
                     >
                       {link.label} →
                     </a>
@@ -146,12 +169,12 @@ export default function MenusPage() {
               </ul>
             </div>
 
-            <div className="flex gap-2 pt-1">
+            <div className="flex gap-2 pt-1 flex-wrap">
               <button
                 type="button"
                 onClick={() => handleCook(detailSuggestion)}
                 disabled={cookedId === detailSuggestion.recipe.id}
-                className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm disabled:opacity-40"
+                className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm disabled:opacity-40"
               >
                 {cookedId === detailSuggestion.recipe.id ? "…" : t("menus.cookThis")}
               </button>
@@ -159,12 +182,21 @@ export default function MenusPage() {
                 <button
                   type="button"
                   onClick={() => handleAddMissing(detailSuggestion)}
-                  className="rounded-lg border border-black/15 dark:border-white/15 px-4 py-2 text-sm"
+                  className="rounded-lg border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm"
                 >
                   {t("menus.addMissingToShopping")}
                 </button>
               )}
             </div>
+
+            {addedFeedback && (
+              <p className="text-sm rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-3 py-2">
+                {addedFeedback}{" "}
+                <Link href="/courses" className="underline font-medium">
+                  {t("menus.seeShoppingList")}
+                </Link>
+              </p>
+            )}
           </div>
         </>
       ) : (
@@ -194,7 +226,7 @@ export default function MenusPage() {
                 onClick={() => toggleTag(tag)}
                 className={`rounded-full px-3 py-1 text-xs border ${
                   selectedTags.includes(tag)
-                    ? "bg-black text-white dark:bg-white dark:text-black border-transparent"
+                    ? "bg-accent text-accent-foreground border-transparent"
                     : "border-black/15 dark:border-white/15"
                 }`}
               >
@@ -220,19 +252,21 @@ export default function MenusPage() {
                       <li key={i}>{formatReason(r)}</li>
                     ))}
                   </ul>
-                  {s.missingIngredients.length > 0 && (
+                  {s.missingIngredients.length > 0 ? (
                     <p className="text-xs opacity-60">
                       {t("menus.missing", {
                         items: s.missingIngredients.map((i) => t(`ingredient.${i.key}`)).join(", "),
                       })}
                     </p>
+                  ) : (
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400">{t("menus.nothingMissing")}</p>
                   )}
                 </button>
                 <div className="pt-1">
                   <button
                     type="button"
                     onClick={() => openDetail(s)}
-                    className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-3 py-1.5 text-xs"
+                    className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-3 py-1.5 text-xs"
                   >
                     {t("menus.cookThis")}
                   </button>
@@ -242,6 +276,16 @@ export default function MenusPage() {
           </ul>
 
           {!loading && suggestions.length === 0 && <p className="text-sm opacity-60">{t("menus.noMatch")}</p>}
+
+          {addedRecipeNames.length > 0 && (
+            <div className="rounded-xl border border-black/10 dark:border-white/10 p-4 space-y-1">
+              <h2 className="text-sm font-medium">{t("menus.recapTitle")}</h2>
+              <p className="text-xs opacity-70">{addedRecipeNames.join(", ")}</p>
+              <Link href="/courses" className="text-sm underline text-accent">
+                {t("menus.seeShoppingList")}
+              </Link>
+            </div>
+          )}
         </>
       )}
     </div>

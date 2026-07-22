@@ -208,7 +208,7 @@ export default function AddStockItemForm({
           type="button"
           onClick={handleSave}
           disabled={!name.trim() || saving}
-          className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm disabled:opacity-40"
+          className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm disabled:opacity-40"
         >
           {saving ? t("form.saving") : t("scan.addToStock")}
         </button>

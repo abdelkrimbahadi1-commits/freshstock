@@ -90,7 +90,7 @@ export default function LoginPage() {
         type="button"
         onClick={handleSubmit}
         disabled={loading || !email || !password}
-        className="w-full rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm disabled:opacity-40"
+        className="w-full rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm disabled:opacity-40"
       >
         {loading ? "…" : mode === "login" ? t("login.signInButton") : t("login.createAccountButton")}
       </button>

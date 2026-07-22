@@ -386,7 +386,7 @@ export default function ScanProduct({
                 setKnownProductsSearch("");
                 setState("not_found");
               }}
-              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm"
+              className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm"
             >
               {t("scan.manualEntry")}
             </button>
@@ -419,7 +419,7 @@ export default function ScanProduct({
               type="button"
               onClick={confirmFound}
               disabled={!foundName.trim()}
-              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm disabled:opacity-40"
+              className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm disabled:opacity-40"
             >
               {t("scan.addToStock")}
             </button>
@@ -532,7 +532,7 @@ export default function ScanProduct({
               type="button"
               onClick={confirmManual}
               disabled={!manualName.trim()}
-              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm disabled:opacity-40"
+              className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm disabled:opacity-40"
             >
               {t("scan.addToStock")}
             </button>

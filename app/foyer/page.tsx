@@ -129,7 +129,7 @@ export default function FoyerPage() {
         <p className="text-sm opacity-70">{t("foyer.mustSignIn")}</p>
         <Link
           href="/login"
-          className="inline-block rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm"
+          className="inline-block rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm"
         >
           {t("login.signIn")}
         </Link>
@@ -164,7 +164,7 @@ export default function FoyerPage() {
                   <button
                     type="button"
                     onClick={() => handleApprove(r)}
-                    className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-3 py-1.5 text-xs"
+                    className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-3 py-1.5 text-xs"
                   >
                     {t("foyer.approve")}
                   </button>
@@ -208,7 +208,7 @@ export default function FoyerPage() {
             type="button"
             onClick={handleCreate}
             disabled={!name.trim()}
-            className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm disabled:opacity-40"
+            className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm disabled:opacity-40"
           >
             {t("foyer.create")}
           </button>
@@ -253,7 +253,7 @@ export default function FoyerPage() {
             type="button"
             onClick={handleRedeem}
             disabled={!approvalCode.trim()}
-            className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm disabled:opacity-40"
+            className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm disabled:opacity-40"
           >
             {t("foyer.join")}
           </button>

@@ -60,7 +60,7 @@ export default function StockPage() {
             <button
               type="button"
               onClick={() => setMode("scan")}
-              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-3 py-2 text-sm"
+              className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-3 py-2 text-sm"
             >
               {t("stock.scan")}
             </button>

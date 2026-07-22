@@ -13,7 +13,7 @@ export default function LanguageSwitch() {
           type="button"
           onClick={() => setLocale(l)}
           className={`px-2.5 py-1.5 ${
-            locale === l ? "bg-black text-white dark:bg-white dark:text-black" : "opacity-60"
+            locale === l ? "bg-accent text-accent-foreground" : "opacity-60"
           }`}
         >
           {l.toUpperCase()}

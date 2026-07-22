@@ -91,7 +91,7 @@ export default function BudgetPage() {
             className="text-left rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 p-4 shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px]"
           >
             <p className="text-xs opacity-60">{t("budget.monthlySpend")}</p>
-            <p className="text-2xl font-semibold">{summary.monthlySpend.toFixed(2)} €</p>
+            <p className="text-2xl font-semibold text-accent">{summary.monthlySpend.toFixed(2)} €</p>
           </button>
           <button
             type="button"
