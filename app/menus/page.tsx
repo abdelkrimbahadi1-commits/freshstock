@@ -6,20 +6,12 @@ import BackButton from "@/components/BackButton";
 import { useLocale } from "@/components/LocaleProvider";
 import { allTags, detectNutritionGap, detectRepetitionWarning, suggestMenus } from "@/lib/menuEngine";
 import { cookMenu, listRecentMealHistory } from "@/lib/mealHistory";
+import { externalRecipeLinks } from "@/lib/recipeLinks";
 import { addMissingIngredients } from "@/lib/shoppingList";
 import { listActiveStock } from "@/lib/stock";
 import type { MealHistoryEntry, MenuSuggestion, ReasonToken, RecipeIngredient, StockItem } from "@/lib/types";
 
 const BASE_SERVINGS = 4;
-
-function recipeSearchLinks(recipeName: string): { label: string; url: string }[] {
-  const q = encodeURIComponent(recipeName);
-  return [
-    { label: "Marmiton", url: `https://www.marmiton.org/recettes/recherche.aspx?aqt=${q}` },
-    { label: "CuisineAZ", url: `https://www.cuisineaz.com/recherche/${q}` },
-    { label: "Google", url: `https://www.google.com/search?q=${q}+recette` },
-  ];
-}
 
 export default function MenusPage() {
   const { t, locale } = useLocale();
@@ -175,7 +167,7 @@ export default function MenusPage() {
             <div>
               <h2 className="text-sm font-medium mb-1">{t("menus.recipeLinksTitle")}</h2>
               <ul className="space-y-1">
-                {recipeSearchLinks(t(`recipe.${detailSuggestion.recipe.id}.name`)).map((link) => (
+                {externalRecipeLinks(t(`recipe.${detailSuggestion.recipe.id}.name`)).map((link) => (
                   <li key={link.label}>
                     <a
                       href={link.url}

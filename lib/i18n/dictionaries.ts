@@ -53,6 +53,7 @@ const fr: Dict = {
   "stock.quickRecipes": "Recettes rapides",
   "stock.otherRecipes": "Autres recettes",
   "stock.noRecipeMatch": "Aucune recette ne correspond à ces produits pour l'instant.",
+  "stock.recipeIdeasFor": "Idées de recettes pour « {name} » :",
 
   "location.frigo": "Frigo",
   "location.congelateur": "Congélateur",
@@ -331,6 +332,7 @@ const en: Dict = {
   "stock.quickRecipes": "Quick recipes",
   "stock.otherRecipes": "Other recipes",
   "stock.noRecipeMatch": "No recipe matches these products yet.",
+  "stock.recipeIdeasFor": "Recipe ideas for \"{name}\":",
 
   "location.frigo": "Fridge",
   "location.congelateur": "Freezer",

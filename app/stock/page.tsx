@@ -9,6 +9,7 @@ import { useLocale } from "@/components/LocaleProvider";
 import ScanProduct, { type ResolvedProduct } from "@/components/ScanProduct";
 import { suggestMenus } from "@/lib/menuEngine";
 import { listRecentMealHistory } from "@/lib/mealHistory";
+import { externalRecipeLinks } from "@/lib/recipeLinks";
 import { daysUntilExpiry, listActiveStock, setStockItemStatus, updateExpiryDate } from "@/lib/stock";
 import type { MenuSuggestion, StockItem, StockLocation } from "@/lib/types";
 
@@ -36,6 +37,7 @@ export default function StockPage() {
   const [editingExpiryId, setEditingExpiryId] = useState<string | null>(null);
   const [pendingExpiryDate, setPendingExpiryDate] = useState("");
   const [recipeSuggestions, setRecipeSuggestions] = useState<MenuSuggestion[] | null>(null);
+  const [suggestionsDeclined, setSuggestionsDeclined] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   function expiryLabel(days: number): string {
@@ -170,7 +172,7 @@ export default function StockPage() {
                 </button>
               </div>
 
-              {recipeSuggestions === null ? (
+              {!suggestionsDeclined && recipeSuggestions === null && (
                 <div className="border-t border-amber-300/60 dark:border-amber-800/60 pt-2 space-y-2">
                   <p className="text-sm">{t("stock.wantRecipeSuggestions")}</p>
                   <div className="flex gap-2">
@@ -184,14 +186,16 @@ export default function StockPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setRecipeSuggestions([])}
+                      onClick={() => setSuggestionsDeclined(true)}
                       className="text-xs underline"
                     >
                       {t("stock.noThanks")}
                     </button>
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {recipeSuggestions !== null &&
                 (() => {
                   const quick = recipeSuggestions.filter((s) => s.recipe.tags.includes("rapide"));
                   const other = recipeSuggestions.filter((s) => !s.recipe.tags.includes("rapide"));
@@ -208,9 +212,32 @@ export default function StockPage() {
                     );
                   }
                   return (
-                    <div className="border-t border-amber-300/60 dark:border-amber-800/60 pt-2 space-y-2">
+                    <div className="border-t border-amber-300/60 dark:border-amber-800/60 pt-2 space-y-3">
                       {recipeSuggestions.length === 0 ? (
-                        <p className="text-xs opacity-70">{t("stock.noRecipeMatch")}</p>
+                        <div className="space-y-2">
+                          <p className="text-xs opacity-70">{t("stock.noRecipeMatch")}</p>
+                          {expiringSoonItems.map((item) => (
+                            <div key={item.id}>
+                              <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                                {t("stock.recipeIdeasFor", { name: item.name })}
+                              </p>
+                              <ul className="flex flex-wrap gap-x-3 gap-y-1">
+                                {externalRecipeLinks(item.name).map((link) => (
+                                  <li key={link.label}>
+                                    <a
+                                      href={link.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm underline text-accent"
+                                    >
+                                      {link.label} →
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
                       ) : (
                         <>
                           {quick.length > 0 && (
@@ -233,8 +260,7 @@ export default function StockPage() {
                       )}
                     </div>
                   );
-                })()
-              )}
+                })()}
             </div>
           )}
           {loading && <p className="text-sm opacity-60">{t("common.loading")}</p>}
