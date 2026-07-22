@@ -1,13 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import AddStockItemForm from "@/components/AddStockItemForm";
 import BackButton from "@/components/BackButton";
 import ExpiryDatePicker from "@/components/ExpiryDatePicker";
 import { useLocale } from "@/components/LocaleProvider";
 import ScanProduct, { type ResolvedProduct } from "@/components/ScanProduct";
+import { suggestMenus } from "@/lib/menuEngine";
+import { listRecentMealHistory } from "@/lib/mealHistory";
 import { daysUntilExpiry, listActiveStock, setStockItemStatus, updateExpiryDate } from "@/lib/stock";
-import type { StockItem, StockLocation } from "@/lib/types";
+import type { MenuSuggestion, StockItem, StockLocation } from "@/lib/types";
 
 const LOCATION_ORDER: StockLocation[] = ["frigo", "congelateur", "placard", "autre"];
 
@@ -24,7 +27,7 @@ function expiryBadgeClass(days: number): string {
 type Mode = "list" | "scan" | "manual-form" | "scan-form";
 
 export default function StockPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [items, setItems] = useState<StockItem[]>([]);
   const [mode, setMode] = useState<Mode>("list");
   const [resolved, setResolved] = useState<ResolvedProduct | null>(null);
@@ -32,6 +35,8 @@ export default function StockPage() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [editingExpiryId, setEditingExpiryId] = useState<string | null>(null);
   const [pendingExpiryDate, setPendingExpiryDate] = useState("");
+  const [recipeSuggestions, setRecipeSuggestions] = useState<MenuSuggestion[] | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   function expiryLabel(days: number): string {
     if (days < 0) return t("stock.expiredSince", { days: Math.abs(days) });
@@ -59,6 +64,16 @@ export default function StockPage() {
   function snoozeBanner() {
     localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_HOURS * 3600_000));
     setBannerDismissed(true);
+  }
+
+  async function showRecipeSuggestions() {
+    setLoadingSuggestions(true);
+    const history = await listRecentMealHistory();
+    const suggestions = suggestMenus(items, history, [], locale).filter(
+      (s) => s.matchedExpiringItems.length > 0
+    );
+    setRecipeSuggestions(suggestions);
+    setLoadingSuggestions(false);
   }
 
   function openExpiryEditor(item: StockItem) {
@@ -147,17 +162,79 @@ export default function StockPage() {
                 })}
               </p>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setBannerDismissed(true)}
-                  className="text-xs underline"
-                >
+                <button type="button" onClick={() => setBannerDismissed(true)} className="text-xs underline">
                   {t("stock.dismissWarning")}
                 </button>
                 <button type="button" onClick={snoozeBanner} className="text-xs underline">
                   {t("stock.snoozeWarning")}
                 </button>
               </div>
+
+              {recipeSuggestions === null ? (
+                <div className="border-t border-amber-300/60 dark:border-amber-800/60 pt-2 space-y-2">
+                  <p className="text-sm">{t("stock.wantRecipeSuggestions")}</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={showRecipeSuggestions}
+                      disabled={loadingSuggestions}
+                      className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-3 py-1.5 text-xs disabled:opacity-40"
+                    >
+                      {loadingSuggestions ? "…" : t("stock.yesShowRecipes")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRecipeSuggestions([])}
+                      className="text-xs underline"
+                    >
+                      {t("stock.noThanks")}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                (() => {
+                  const quick = recipeSuggestions.filter((s) => s.recipe.tags.includes("rapide"));
+                  const other = recipeSuggestions.filter((s) => !s.recipe.tags.includes("rapide"));
+                  function recipeRow(s: MenuSuggestion) {
+                    return (
+                      <li key={s.recipe.id}>
+                        <Link href="/menus" className="text-sm underline text-accent">
+                          {t(`recipe.${s.recipe.id}.name`)}
+                        </Link>{" "}
+                        <span className="text-xs opacity-60">
+                          {t("menus.prepTime", { minutes: s.recipe.prep_time_minutes })}
+                        </span>
+                      </li>
+                    );
+                  }
+                  return (
+                    <div className="border-t border-amber-300/60 dark:border-amber-800/60 pt-2 space-y-2">
+                      {recipeSuggestions.length === 0 ? (
+                        <p className="text-xs opacity-70">{t("stock.noRecipeMatch")}</p>
+                      ) : (
+                        <>
+                          {quick.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                                {t("stock.quickRecipes")}
+                              </p>
+                              <ul className="space-y-1">{quick.map(recipeRow)}</ul>
+                            </div>
+                          )}
+                          {other.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                                {t("stock.otherRecipes")}
+                              </p>
+                              <ul className="space-y-1">{other.map(recipeRow)}</ul>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
             </div>
           )}
           {loading && <p className="text-sm opacity-60">{t("common.loading")}</p>}

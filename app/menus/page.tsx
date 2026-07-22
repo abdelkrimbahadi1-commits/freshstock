@@ -219,7 +219,7 @@ export default function MenusPage() {
                 type="button"
                 onClick={() => handleCook(detailSuggestion)}
                 disabled={cookedId === detailSuggestion.recipe.id}
-                className="text-xs underline opacity-70 disabled:opacity-40"
+                className="rounded-lg border-2 border-emerald-600 text-emerald-700 dark:text-emerald-400 shadow-[0_2px_0_rgba(0,0,0,0.15)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm font-medium disabled:opacity-40"
               >
                 {cookedId === detailSuggestion.recipe.id ? "…" : t("menus.finishCooking")}
               </button>
