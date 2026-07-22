@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AddStockItemForm from "@/components/AddStockItemForm";
+import BackButton from "@/components/BackButton";
 import { useLocale } from "@/components/LocaleProvider";
 import ScanProduct, { type ResolvedProduct } from "@/components/ScanProduct";
 import { daysUntilExpiry, listActiveStock, setStockItemStatus } from "@/lib/stock";
@@ -59,7 +60,7 @@ export default function StockPage() {
             <button
               type="button"
               onClick={() => setMode("scan")}
-              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-3 py-2 text-sm"
+              className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-3 py-2 text-sm"
             >
               {t("stock.scan")}
             </button>
@@ -76,6 +77,8 @@ export default function StockPage() {
           </div>
         )}
       </div>
+
+      {mode !== "list" && <BackButton onClick={() => setMode("list")} />}
 
       {mode === "scan" && (
         <ScanProduct
@@ -132,17 +135,17 @@ export default function StockPage() {
                           type="button"
                           onClick={() => handleStatus(item.id, "consumed")}
                           title={t("stock.consumedTitle")}
-                          className="text-xs rounded-lg border border-black/15 dark:border-white/15 px-2 py-1"
+                          className="flex items-center gap-1 text-xs rounded-lg border border-emerald-600/40 bg-white dark:bg-neutral-900 text-emerald-700 dark:text-emerald-400 px-2 py-1 whitespace-nowrap shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px]"
                         >
-                          ✓
+                          <span aria-hidden="true">✓</span> {t("stock.consumedTitle")}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleStatus(item.id, "discarded")}
                           title={t("stock.discardedTitle")}
-                          className="text-xs rounded-lg border border-black/15 dark:border-white/15 px-2 py-1"
+                          className="flex items-center gap-1 text-xs rounded-lg border border-red-600/40 bg-white dark:bg-neutral-900 text-red-700 dark:text-red-400 px-2 py-1 whitespace-nowrap shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px]"
                         >
-                          ✕
+                          <span aria-hidden="true">🗑</span> {t("stock.discardedTitle")}
                         </button>
                       </div>
                     </li>

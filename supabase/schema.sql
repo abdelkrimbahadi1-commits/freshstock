@@ -182,3 +182,175 @@ end;
 $$;
 
 grant execute on function join_household_by_code(text) to authenticated;
+
+-- Rejoindre un foyer avec validation par un administrateur : le demandeur
+-- envoie une demande (identifiée par le code du foyer), un administrateur
+-- (role 'owner') l'approuve depuis l'app et reçoit un code d'approbation à
+-- transmettre hors-app au demandeur, qui l'utilise pour finaliser son entrée.
+create table if not exists household_join_requests (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references households (id) on delete cascade,
+  requester_id uuid not null references auth.users (id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'redeemed')),
+  approval_code text,
+  created_at timestamptz not null default now(),
+  decided_at timestamptz
+);
+
+alter table household_join_requests enable row level security;
+
+-- Helper : l'utilisateur courant est-il administrateur (owner) de ce foyer ?
+create or replace function is_household_owner(target_household_id uuid)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1 from household_members
+    where household_id = target_household_id
+      and user_id = auth.uid()
+      and role = 'owner'
+  );
+$$;
+
+-- Le demandeur voit ses propres demandes ; l'administrateur voit celles de son foyer.
+create policy "join_requests_select_own_or_owner" on household_join_requests
+  for select using (requester_id = auth.uid() or is_household_owner(household_id));
+
+-- Toutes les écritures passent par les fonctions security definer ci-dessous :
+-- aucune policy INSERT/UPDATE n'est nécessaire côté client.
+
+create or replace function request_to_join_household(p_code text)
+returns household_join_requests
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_household households;
+  v_request household_join_requests;
+begin
+  select * into v_household from households where join_code = upper(p_code);
+  if v_household.id is null then
+    raise exception 'invalid_code';
+  end if;
+
+  if exists (
+    select 1 from household_members
+    where household_id = v_household.id and user_id = auth.uid()
+  ) then
+    raise exception 'already_member';
+  end if;
+
+  select * into v_request from household_join_requests
+  where household_id = v_household.id and requester_id = auth.uid() and status = 'pending';
+
+  if v_request.id is null then
+    insert into household_join_requests (household_id, requester_id)
+    values (v_household.id, auth.uid())
+    returning * into v_request;
+  end if;
+
+  return v_request;
+end;
+$$;
+
+grant execute on function request_to_join_household(text) to authenticated;
+
+create or replace function list_pending_join_requests()
+returns table (id uuid, household_id uuid, requester_id uuid, requester_email text, created_at timestamptz)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select r.id, r.household_id, r.requester_id, u.email, r.created_at
+  from household_join_requests r
+  join auth.users u on u.id = r.requester_id
+  where r.status = 'pending' and is_household_owner(r.household_id)
+  order by r.created_at asc;
+$$;
+
+grant execute on function list_pending_join_requests() to authenticated;
+
+create or replace function approve_join_request(p_request_id uuid)
+returns household_join_requests
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_request household_join_requests;
+  v_code text := upper(substr(md5(random()::text), 1, 6));
+begin
+  select * into v_request from household_join_requests where id = p_request_id;
+  if v_request.id is null or not is_household_owner(v_request.household_id) then
+    raise exception 'not_authorized';
+  end if;
+
+  update household_join_requests
+  set status = 'approved', approval_code = v_code, decided_at = now()
+  where id = p_request_id
+  returning * into v_request;
+
+  return v_request;
+end;
+$$;
+
+grant execute on function approve_join_request(uuid) to authenticated;
+
+create or replace function reject_join_request(p_request_id uuid)
+returns household_join_requests
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_request household_join_requests;
+begin
+  select * into v_request from household_join_requests where id = p_request_id;
+  if v_request.id is null or not is_household_owner(v_request.household_id) then
+    raise exception 'not_authorized';
+  end if;
+
+  update household_join_requests
+  set status = 'rejected', decided_at = now()
+  where id = p_request_id
+  returning * into v_request;
+
+  return v_request;
+end;
+$$;
+
+grant execute on function reject_join_request(uuid) to authenticated;
+
+create or replace function redeem_join_approval(p_code text)
+returns households
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_request household_join_requests;
+  v_household households;
+begin
+  select * into v_request from household_join_requests
+  where approval_code = upper(p_code) and status = 'approved' and requester_id = auth.uid();
+
+  if v_request.id is null then
+    raise exception 'invalid_code';
+  end if;
+
+  insert into household_members (household_id, user_id, role)
+  values (v_request.household_id, auth.uid(), 'member')
+  on conflict do nothing;
+
+  update household_join_requests set status = 'redeemed' where id = v_request.id;
+
+  select * into v_household from households where id = v_request.household_id;
+  return v_household;
+end;
+$$;
+
+grant execute on function redeem_join_approval(text) to authenticated;

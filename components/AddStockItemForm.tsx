@@ -14,6 +14,19 @@ function addDays(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function parseIsoDate(iso: string): { day: number; month: number; year: number } {
+  const [year, month, day] = iso.split("-").map(Number);
+  return { day, month, year };
+}
+
+function toIsoDate(day: number, month: number, year: number): string {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function daysInMonth(month: number, year: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
 export default function AddStockItemForm({
   initialName = "",
   initialCategory = "autre",
@@ -37,7 +50,7 @@ export default function AddStockItemForm({
   const [quantity, setQuantity] = useState(1);
   const [unit, setUnit] = useState("unite");
   const [location, setLocation] = useState<StockLocation>("placard");
-  const [expiryDays, setExpiryDays] = useState(DEFAULT_SHELF_LIFE_DAYS[initialCategory]);
+  const [expiryDate, setExpiryDate] = useState(addDays(DEFAULT_SHELF_LIFE_DAYS[initialCategory]));
   const [price, setPrice] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
@@ -65,7 +78,7 @@ export default function AddStockItemForm({
       quantity,
       unit,
       location,
-      expiry_date: addDays(expiryDays),
+      expiry_date: expiryDate,
       price: price ? Number(price) : null,
     });
     setSaving(false);
@@ -86,7 +99,7 @@ export default function AddStockItemForm({
         onChange={(e) => {
           const c = e.target.value as Category;
           setCategory(c);
-          setExpiryDays(DEFAULT_SHELF_LIFE_DAYS[c]);
+          setExpiryDate(addDays(DEFAULT_SHELF_LIFE_DAYS[c]));
         }}
         className="w-full rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm"
       >
@@ -126,21 +139,58 @@ export default function AddStockItemForm({
       </div>
 
       <div>
-        <p className="text-xs opacity-60 mb-1">
-          {t("form.expiryEstimate", { date: addDays(expiryDays), days: expiryDays })}
-        </p>
-        <div className="flex gap-2 flex-wrap">
-          {[-3, -1, +1, +3, +7].map((delta) => (
-            <button
-              key={delta}
-              type="button"
-              onClick={() => setExpiryDays((d) => Math.max(0, d + delta))}
-              className="rounded-full border border-black/15 dark:border-white/15 px-3 py-1 text-xs"
-            >
-              {delta > 0 ? `+${delta}j` : `${delta}j`}
-            </button>
-          ))}
-        </div>
+        <p className="text-xs opacity-60 mb-1">{t("form.expiryLabel")}</p>
+        {(() => {
+          const { day, month, year } = parseIsoDate(expiryDate);
+          const days = Array.from({ length: daysInMonth(month, year) }, (_, i) => i + 1);
+          const months = Array.from({ length: 12 }, (_, i) => i + 1);
+          const years = Array.from({ length: 6 }, (_, i) => year - 1 + i);
+          return (
+            <div className="flex gap-2">
+              <select
+                value={day}
+                onChange={(e) => setExpiryDate(toIsoDate(Number(e.target.value), month, year))}
+                className="flex-1 rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-2 py-2 text-sm"
+              >
+                {days.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={month}
+                onChange={(e) => {
+                  const m = Number(e.target.value);
+                  const clampedDay = Math.min(day, daysInMonth(m, year));
+                  setExpiryDate(toIsoDate(clampedDay, m, year));
+                }}
+                className="flex-1 rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-2 py-2 text-sm"
+              >
+                {months.map((m) => (
+                  <option key={m} value={m}>
+                    {t(`month.${m}`)}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={year}
+                onChange={(e) => {
+                  const y = Number(e.target.value);
+                  const clampedDay = Math.min(day, daysInMonth(month, y));
+                  setExpiryDate(toIsoDate(clampedDay, month, y));
+                }}
+                className="flex-1 rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-2 py-2 text-sm"
+              >
+                {years.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        })()}
       </div>
 
       <input
@@ -158,7 +208,7 @@ export default function AddStockItemForm({
           type="button"
           onClick={handleSave}
           disabled={!name.trim() || saving}
-          className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm disabled:opacity-40"
+          className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm disabled:opacity-40"
         >
           {saving ? t("form.saving") : t("scan.addToStock")}
         </button>

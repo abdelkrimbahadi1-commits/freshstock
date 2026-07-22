@@ -39,9 +39,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <LocaleProvider>
           <ServiceWorkerRegister />
-          <LanguageSwitch />
-          <main className="flex-1 pt-12 pb-20">{children}</main>
           <NavBar />
+          <LanguageSwitch />
+          <main className="flex-1 pt-16 pb-6">{children}</main>
         </LocaleProvider>
       </body>
     </html>
