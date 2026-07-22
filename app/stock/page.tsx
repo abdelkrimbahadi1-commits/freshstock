@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AddStockItemForm from "@/components/AddStockItemForm";
+import BackButton from "@/components/BackButton";
 import { useLocale } from "@/components/LocaleProvider";
 import ScanProduct, { type ResolvedProduct } from "@/components/ScanProduct";
 import { daysUntilExpiry, listActiveStock, setStockItemStatus } from "@/lib/stock";
@@ -77,6 +78,8 @@ export default function StockPage() {
         )}
       </div>
 
+      {mode !== "list" && <BackButton onClick={() => setMode("list")} />}
+
       {mode === "scan" && (
         <ScanProduct
           onResolved={(p) => {
@@ -132,17 +135,17 @@ export default function StockPage() {
                           type="button"
                           onClick={() => handleStatus(item.id, "consumed")}
                           title={t("stock.consumedTitle")}
-                          className="text-xs rounded-lg border border-black/15 dark:border-white/15 px-2 py-1"
+                          className="flex items-center gap-1 text-xs rounded-lg border border-emerald-600/40 text-emerald-700 dark:text-emerald-400 px-2 py-1 whitespace-nowrap"
                         >
-                          ✓
+                          <span aria-hidden="true">✓</span> {t("stock.consumedTitle")}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleStatus(item.id, "discarded")}
                           title={t("stock.discardedTitle")}
-                          className="text-xs rounded-lg border border-black/15 dark:border-white/15 px-2 py-1"
+                          className="flex items-center gap-1 text-xs rounded-lg border border-red-600/40 text-red-700 dark:text-red-400 px-2 py-1 whitespace-nowrap"
                         >
-                          ✕
+                          <span aria-hidden="true">🗑</span> {t("stock.discardedTitle")}
                         </button>
                       </div>
                     </li>

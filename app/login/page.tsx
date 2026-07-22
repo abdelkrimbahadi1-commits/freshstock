@@ -13,19 +13,38 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [confirmationPending, setConfirmationPending] = useState(false);
 
   async function handleSubmit() {
     const supabase = createClient();
     if (!supabase) return;
     setLoading(true);
     setError(null);
-    const { error } =
-      mode === "login"
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
+    setConfirmationPending(false);
+
+    if (mode === "login") {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      setLoading(false);
+      if (error) {
+        setError(error.message);
+        return;
+      }
+      router.push("/foyer");
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signUp({ email, password });
     setLoading(false);
     if (error) {
       setError(error.message);
+      return;
+    }
+    // Si la confirmation par email est activée sur le projet Supabase,
+    // signUp() ne renvoie pas de session tant que le lien n'est pas cliqué :
+    // rediriger vers /foyer ici afficherait l'erreur "vous devez être
+    // connecté" alors que l'utilisateur vient tout juste de créer son compte.
+    if (!data.session) {
+      setConfirmationPending(true);
       return;
     }
     router.push("/foyer");
@@ -36,6 +55,15 @@ export default function LoginPage() {
       <div className="max-w-md mx-auto p-4 space-y-4">
         <h1 className="text-xl font-semibold">{t("login.title")}</h1>
         <p className="text-sm opacity-70">{t("login.notConfigured")}</p>
+      </div>
+    );
+  }
+
+  if (confirmationPending) {
+    return (
+      <div className="max-w-md mx-auto p-4 space-y-3">
+        <h1 className="text-xl font-semibold">{t("login.signUp")}</h1>
+        <p className="text-sm opacity-70">{t("login.confirmationPending")}</p>
       </div>
     );
   }

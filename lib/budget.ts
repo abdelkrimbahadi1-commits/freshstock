@@ -13,6 +13,22 @@ function isThisMonth(dateIso: string): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
+export function itemsForMonthlySpend(items: StockItem[]): StockItem[] {
+  return items.filter((i) => i.price != null && isThisMonth(i.purchase_date));
+}
+
+export function itemsForWasteAvoided(items: StockItem[]): StockItem[] {
+  return items.filter(
+    (i) => i.price != null && i.status === "consumed" && isThisMonth(i.updated_at.slice(0, 10))
+  );
+}
+
+export function itemsForWasteLost(items: StockItem[]): StockItem[] {
+  return items.filter(
+    (i) => i.price != null && i.status === "discarded" && isThisMonth(i.updated_at.slice(0, 10))
+  );
+}
+
 export function computeBudgetSummary(items: StockItem[]): BudgetSummary {
   let monthlySpend = 0;
   let wasteAvoided = 0;

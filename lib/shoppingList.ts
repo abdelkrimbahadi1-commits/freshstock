@@ -54,6 +54,16 @@ export async function toggleShoppingListItem(id: string, checked: boolean): Prom
   if (item) await queueWrite("shopping_list", "upsert", item as unknown as Record<string, unknown>);
 }
 
+export async function updateShoppingListItemQuantity(
+  id: string,
+  quantity: number,
+  unit: string
+): Promise<void> {
+  await db.shopping_list.update(id, { quantity, unit });
+  const item = await db.shopping_list.get(id);
+  if (item) await queueWrite("shopping_list", "upsert", item as unknown as Record<string, unknown>);
+}
+
 export async function removeShoppingListItem(id: string): Promise<void> {
   await db.shopping_list.delete(id);
   await queueWrite("shopping_list", "delete", { id });

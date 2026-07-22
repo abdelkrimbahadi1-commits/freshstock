@@ -9,6 +9,23 @@ export interface HouseholdInfo {
   join_code: string;
 }
 
+export interface JoinRequest {
+  id: string;
+  household_id: string;
+  requester_id: string;
+  requester_email: string;
+  created_at: string;
+}
+
+export async function isSignedIn(): Promise<boolean> {
+  const supabase = createClient();
+  if (!supabase) return false;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return Boolean(user);
+}
+
 export async function getMyHousehold(): Promise<HouseholdInfo | null> {
   const supabase = createClient();
   if (!supabase) return null;
@@ -57,7 +74,12 @@ export async function createHousehold(name: string): Promise<HouseholdInfo> {
   return household;
 }
 
-export async function joinHousehold(joinCode: string): Promise<HouseholdInfo> {
+// Rejoindre un foyer passe désormais par une demande adressée au(x)
+// administrateur(s) (role 'owner') : le demandeur envoie le code du foyer,
+// l'administrateur approuve depuis l'écran Foyer et obtient un code
+// d'approbation à transmettre au demandeur, qui l'utilise pour finaliser
+// son entrée dans le foyer (voir redeemApprovalCode ci-dessous).
+export async function requestToJoinHousehold(joinCode: string): Promise<void> {
   const supabase = createClient();
   if (!supabase) throw new Error("error.notSupabaseConfigured");
   const {
@@ -65,7 +87,46 @@ export async function joinHousehold(joinCode: string): Promise<HouseholdInfo> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("error.notSignedIn");
 
-  const { data, error } = await supabase.rpc("join_household_by_code", { p_code: joinCode });
+  const { error } = await supabase.rpc("request_to_join_household", { p_code: joinCode });
+  if (error) {
+    if (error.message?.includes("invalid_code")) throw new Error("error.invalidCode");
+    if (error.message?.includes("already_member")) throw new Error("error.alreadyMember");
+    throw error;
+  }
+}
+
+export async function listPendingJoinRequests(): Promise<JoinRequest[]> {
+  const supabase = createClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase.rpc("list_pending_join_requests");
+  if (error) throw error;
+  return (data as JoinRequest[]) ?? [];
+}
+
+export async function approveJoinRequest(requestId: string): Promise<string> {
+  const supabase = createClient();
+  if (!supabase) throw new Error("error.notSupabaseConfigured");
+  const { data, error } = await supabase.rpc("approve_join_request", { p_request_id: requestId });
+  if (error) throw error;
+  return (data as { approval_code: string }).approval_code;
+}
+
+export async function rejectJoinRequest(requestId: string): Promise<void> {
+  const supabase = createClient();
+  if (!supabase) throw new Error("error.notSupabaseConfigured");
+  const { error } = await supabase.rpc("reject_join_request", { p_request_id: requestId });
+  if (error) throw error;
+}
+
+export async function redeemApprovalCode(code: string): Promise<HouseholdInfo> {
+  const supabase = createClient();
+  if (!supabase) throw new Error("error.notSupabaseConfigured");
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("error.notSignedIn");
+
+  const { data, error } = await supabase.rpc("redeem_join_approval", { p_code: code });
   if (error) {
     if (error.message?.includes("invalid_code")) throw new Error("error.invalidCode");
     throw error;
