@@ -101,6 +101,22 @@ as $$
   );
 $$;
 
+-- Helper : l'utilisateur courant est-il administrateur (owner) de ce foyer ?
+-- Défini ici (avant les policies) car households_update_members en a besoin.
+create or replace function is_household_owner(target_household_id uuid)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1 from household_members
+    where household_id = target_household_id
+      and user_id = auth.uid()
+      and role = 'owner'
+  );
+$$;
+
 alter table households enable row level security;
 alter table household_members enable row level security;
 alter table products enable row level security;
@@ -110,40 +126,57 @@ alter table meal_history enable row level security;
 alter table shopping_list enable row level security;
 alter table feedback enable row level security;
 
--- households : visible/modifiable par ses membres, création libre pour un user authentifié.
+-- households : visible par ses membres, création libre pour un user authentifié,
+-- modification réservée à l'administrateur (owner) du foyer.
+drop policy if exists "households_select_members" on households;
 create policy "households_select_members" on households
   for select using (is_household_member(id));
+drop policy if exists "households_insert_self" on households;
 create policy "households_insert_self" on households
   for insert with check (auth.uid() = created_by);
+drop policy if exists "households_update_members" on households;
 create policy "households_update_members" on households
-  for update using (is_household_member(id));
+  for update using (is_household_owner(id));
 
 -- household_members : un membre voit les autres membres de ses foyers.
+-- Aucune policy INSERT/UPDATE/DELETE côté client : l'ajout d'un membre ne
+-- doit se produire que via les fonctions security definer ci-dessous
+-- (create_household, redeem_join_approval), qui contrôlent explicitement
+-- qui peut rejoindre un foyer et comment. Sans policy d'écriture, RLS
+-- refuse par défaut toute tentative d'insertion directe (ex. un appel
+-- REST/JS forgé qui contournerait le flux demande → approbation → code).
+drop policy if exists "household_members_select" on household_members;
 create policy "household_members_select" on household_members
   for select using (is_household_member(household_id));
-create policy "household_members_insert_self" on household_members
-  for insert with check (auth.uid() = user_id);
+drop policy if exists "household_members_insert_self" on household_members;
 
 -- products : catalogue partagé en lecture/écriture par tout utilisateur authentifié (pas de donnée sensible).
+drop policy if exists "products_select_all" on products;
 create policy "products_select_all" on products for select using (auth.uid() is not null);
+drop policy if exists "products_insert_all" on products;
 create policy "products_insert_all" on products for insert with check (auth.uid() is not null);
 
 -- recipes : catalogue partagé en lecture seule (seedé côté serveur).
+drop policy if exists "recipes_select_all" on recipes;
 create policy "recipes_select_all" on recipes for select using (auth.uid() is not null);
 
 -- Tables scopées par foyer : CRUD réservé aux membres du foyer.
+drop policy if exists "stock_items_all_members" on stock_items;
 create policy "stock_items_all_members" on stock_items
   for all using (is_household_member(household_id))
   with check (is_household_member(household_id));
 
+drop policy if exists "meal_history_all_members" on meal_history;
 create policy "meal_history_all_members" on meal_history
   for all using (is_household_member(household_id))
   with check (is_household_member(household_id));
 
+drop policy if exists "shopping_list_all_members" on shopping_list;
 create policy "shopping_list_all_members" on shopping_list
   for all using (is_household_member(household_id))
   with check (is_household_member(household_id));
 
+drop policy if exists "feedback_all_members" on feedback;
 create policy "feedback_all_members" on feedback
   for all using (is_household_member(household_id))
   with check (is_household_member(household_id));
@@ -164,6 +197,10 @@ declare
   v_household households;
   v_join_code text := upper(substr(md5(random()::text), 1, 6));
 begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
   insert into households (name, join_code, created_by)
   values (p_name, v_join_code, auth.uid())
   returning * into v_household;
@@ -177,29 +214,13 @@ $$;
 
 grant execute on function create_household(text) to authenticated;
 
-create or replace function join_household_by_code(p_code text)
-returns households
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_household households;
-begin
-  select * into v_household from households where join_code = upper(p_code);
-  if v_household.id is null then
-    raise exception 'invalid_code';
-  end if;
-
-  insert into household_members (household_id, user_id, role)
-  values (v_household.id, auth.uid(), 'member')
-  on conflict do nothing;
-
-  return v_household;
-end;
-$$;
-
-grant execute on function join_household_by_code(text) to authenticated;
+-- L'ancien flux de jonction directe par code (join_household_by_code) est
+-- supprimé : il permettait de rejoindre un foyer instantanément avec le
+-- seul code d'invitation, en contournant complètement le workflow
+-- demande → approbation par l'administrateur → code → finalisation
+-- ci-dessous. Le frontend ne l'appelait déjà plus ; ce `drop` ferme
+-- l'accès pour de bon, y compris pour un appel RPC direct forgé.
+drop function if exists join_household_by_code(text);
 
 -- Rejoindre un foyer avec validation par un administrateur : le demandeur
 -- envoie une demande (identifiée par le code du foyer), un administrateur
@@ -217,22 +238,11 @@ create table if not exists household_join_requests (
 
 alter table household_join_requests enable row level security;
 
--- Helper : l'utilisateur courant est-il administrateur (owner) de ce foyer ?
-create or replace function is_household_owner(target_household_id uuid)
-returns boolean
-language sql
-security definer
-stable
-as $$
-  select exists (
-    select 1 from household_members
-    where household_id = target_household_id
-      and user_id = auth.uid()
-      and role = 'owner'
-  );
-$$;
+-- (is_household_owner est défini plus haut, avant les policies households,
+-- qui en ont besoin dès leur création.)
 
 -- Le demandeur voit ses propres demandes ; l'administrateur voit celles de son foyer.
+drop policy if exists "join_requests_select_own_or_owner" on household_join_requests;
 create policy "join_requests_select_own_or_owner" on household_join_requests
   for select using (requester_id = auth.uid() or is_household_owner(household_id));
 
@@ -249,6 +259,10 @@ declare
   v_household households;
   v_request household_join_requests;
 begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
   select * into v_household from households where join_code = upper(p_code);
   if v_household.id is null then
     raise exception 'invalid_code';
@@ -302,6 +316,10 @@ declare
   v_request household_join_requests;
   v_code text := upper(substr(md5(random()::text), 1, 6));
 begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
   select * into v_request from household_join_requests where id = p_request_id;
   if v_request.id is null or not is_household_owner(v_request.household_id) then
     raise exception 'not_authorized';
@@ -327,6 +345,10 @@ as $$
 declare
   v_request household_join_requests;
 begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
   select * into v_request from household_join_requests where id = p_request_id;
   if v_request.id is null or not is_household_owner(v_request.household_id) then
     raise exception 'not_authorized';
@@ -353,6 +375,10 @@ declare
   v_request household_join_requests;
   v_household households;
 begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
   select * into v_request from household_join_requests
   where approval_code = upper(p_code) and status = 'approved' and requester_id = auth.uid();
 
