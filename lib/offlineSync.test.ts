@@ -47,6 +47,29 @@ beforeEach(async () => {
   vi.mocked(createClient).mockReset();
 });
 
+// flushSyncQueue() est appelé "fire and forget" par les listeners (comme en
+// prod), et les opérations Dexie contre fake-indexeddb peuvent prendre
+// plusieurs tours de boucle d'événements réels pour se résoudre. On attend
+// donc une condition précise plutôt qu'un nombre fixe de ticks, plus fiable
+// qu'un enchaînement de `setTimeout(0)` devinés au hasard.
+async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (!(await predicate())) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error("waitFor: condition non atteinte dans le délai imparti");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+// Pour vérifier une absence (ex. "rien n'a encore été synchronisé") à un
+// instant précis, on laisse quelques ticks s'écouler sans plus.
+async function tick(times = 3): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 describe("flushSyncQueue", () => {
   it("ne bloque pas les entrées suivantes quand une entrée échoue définitivement", async () => {
     const calls: string[] = [];
@@ -126,22 +149,97 @@ describe("flushSyncQueue", () => {
     await queueWrite("feedback", "upsert", { id: "avis-1", message: "top" });
 
     registerSyncListeners(); // enregistre le listener SIGNED_IN + tente un 1er flush (pas connecté -> no-op)
-    // Laisse le 1er flush (non authentifié) se terminer et libérer le
-    // verrou avant de déclencher SIGNED_IN, sinon la 2e tentative de flush
-    // est ignorée car une précédente est encore "en vol".
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Laisse le 1er flush (non authentifié, no-op) se terminer avant de
+    // déclencher SIGNED_IN, sinon la 2e tentative de flush est ignorée car
+    // une précédente est encore "en vol".
+    await waitFor(() => fake.auth.getUser.mock.calls.length >= 1);
+    await tick();
     expect(calls).toEqual([]);
 
     fake.__setAuthed(true);
     fake.__triggerAuthChange("SIGNED_IN");
-    // flushSyncQueue est fire-and-forget dans le listener : laisser la
-    // microtask queue se vider.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
+    await waitFor(() => calls.length > 0);
     expect(calls).toEqual(["feedback:avis-1"]);
-    expect(await db.sync_queue.count()).toBe(0);
+    await waitFor(async () => (await db.sync_queue.count()) === 0);
+  });
+
+  it("un SIGNED_IN reçu pendant qu'une passe non authentifiée est encore en vol n'est pas perdu", async () => {
+    // Reproduit précisément la race condition : la 1re passe (non
+    // authentifiée, déclenchée par registerSyncListeners) est délibérément
+    // bloquée en plein milieu de son appel getUser(). SIGNED_IN arrive
+    // pendant ce blocage. On vérifie que la demande n'est pas perdue et
+    // qu'une 2e passe, authentifiée cette fois, synchronise bien l'entrée.
+    const calls: string[] = [];
+    // Ref objects plutôt que de simples `let` : évite un piège d'inférence
+    // TypeScript où une variable réassignée uniquement à l'intérieur d'une
+    // closure imbriquée se retrouve narrowée à `never` aux points d'usage
+    // plus bas (tsc est plus strict que le transform utilisé par vitest).
+    const releaseFirstGetUserRef: { current: (() => void) | null } = { current: null };
+    const authChangeCallbackRef: { current: ((event: string) => void) | null } = { current: null };
+    let getUserCallCount = 0;
+    let authed = false;
+
+    const fake = {
+      auth: {
+        getUser: vi.fn().mockImplementation(async () => {
+          getUserCallCount++;
+          if (getUserCallCount === 1) {
+            // Le 1er appel (celui de la passe non authentifiée) reste en
+            // attente tant que le test ne le débloque pas explicitement —
+            // et répond "pas connecté" quel que soit l'état de `authed` au
+            // moment où on le débloque, pour bien simuler une passe qui a
+            // *commencé* avant que la connexion ne soit établie.
+            await new Promise<void>((resolve) => {
+              releaseFirstGetUserRef.current = resolve;
+            });
+            return { data: { user: null } };
+          }
+          return { data: { user: authed ? { id: "user-1" } : null } };
+        }),
+        onAuthStateChange: vi.fn().mockImplementation((cb: (event: string) => void) => {
+          authChangeCallbackRef.current = cb;
+        }),
+      },
+      from(table: string) {
+        return {
+          upsert: async (payload: Record<string, unknown>) => {
+            calls.push(`${table}:${payload.id}`);
+            return { error: null };
+          },
+          delete: () => ({ eq: async () => ({ error: null }) }),
+        };
+      },
+    };
+    vi.mocked(createClient).mockReturnValue(fake as never);
+
+    await queueWrite("feedback", "upsert", { id: "avis-race" });
+
+    // 1. Démarre la 1re passe (non authentifiée) — reste bloquée sur getUser().
+    registerSyncListeners();
+    await waitFor(() => getUserCallCount >= 1);
+
+    // 2. SIGNED_IN arrive alors que cette 1re passe est toujours en vol.
+    authed = true;
+    authChangeCallbackRef.current?.("SIGNED_IN");
+    await tick();
+
+    // 3. La demande n'a pas pu s'exécuter tout de suite (flushing=true) :
+    // rien n'est encore synchronisé, et un 2e appel getUser() n'a pas eu
+    // lieu puisque flushSyncQueue() a juste mémorisé la demande et retourné.
+    expect(calls).toEqual([]);
+    expect(getUserCallCount).toBe(1);
+
+    // Débloque enfin la 1re passe (qui se termine en "pas connecté").
+    releaseFirstGetUserRef.current?.();
+
+    // 4. Une 2e passe démarre bien juste après la 1re (nouvel appel
+    // getUser(), cette fois authentifié).
+    await waitFor(() => getUserCallCount >= 2);
+    // 5. L'entrée en attente a été synchronisée.
+    await waitFor(() => calls.length > 0);
+    expect(calls).toEqual(["feedback:avis-race"]);
+    await waitFor(async () => (await db.sync_queue.count()) === 0);
   });
 });
 

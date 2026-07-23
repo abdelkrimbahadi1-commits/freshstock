@@ -78,6 +78,21 @@ export async function queueWrite(
 // verrou inter-onglets pour des appels rapprochés dans le même onglet).
 let flushing = false;
 
+// Une passe est déjà en cours quand une nouvelle demande arrive (ex.
+// SIGNED_IN pendant qu'une passe non authentifiée tourne encore) : au lieu
+// de la perdre, on mémorise juste "il faudra repasser une fois celle-ci
+// terminée". Un booléen suffit : plusieurs demandes simultanées se
+// regroupent naturellement en une seule passe supplémentaire.
+let rerunRequested = false;
+
+// Filet de sécurité théorique : rien dans ce module ne devrait faire
+// boucler ce mécanisme indéfiniment (rerunRequested n'est mis à true que
+// par un appel externe explicite, jamais par runFlush lui-même), mais on
+// borne quand même le nombre de passes enchaînées d'un seul coup. Si la
+// limite est atteinte, on s'arrête là ; les triggers habituels (prochaine
+// écriture, event "online", prochain SIGNED_IN) reprendront la suite.
+const MAX_CONSECUTIVE_PASSES = 10;
+
 // Verrou inter-onglets via l'API standard Web Locks, sans race condition et
 // automatiquement libéré si l'onglet qui le tient plante ou se ferme — pas
 // besoin de gérer un timeout à la main. Repli silencieux sur le seul verrou
@@ -94,10 +109,21 @@ async function withCrossTabLock(fn: () => Promise<void>): Promise<void> {
 }
 
 export async function flushSyncQueue(): Promise<void> {
-  if (flushing) return;
+  if (flushing) {
+    // Une passe tourne déjà (potentiellement dans un état pas encore à
+    // jour, ex. pas encore authentifiée) : on ne l'interrompt pas, mais on
+    // garantit qu'une passe supplémentaire aura lieu juste après.
+    rerunRequested = true;
+    return;
+  }
   flushing = true;
   try {
-    await withCrossTabLock(runFlush);
+    let passes = 0;
+    do {
+      rerunRequested = false;
+      await withCrossTabLock(runFlush);
+      passes++;
+    } while (rerunRequested && passes < MAX_CONSECUTIVE_PASSES);
   } finally {
     flushing = false;
   }
