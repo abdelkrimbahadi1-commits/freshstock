@@ -1,7 +1,8 @@
 "use client";
 
 import { createClient } from "./supabase/client";
-import { setHouseholdId } from "./session";
+import { migrateLocalDataToHousehold } from "./householdMigration";
+import { confirmRemoteHousehold, getHouseholdId } from "./session";
 
 export interface HouseholdInfo {
   id: string;
@@ -48,7 +49,20 @@ export async function getMyHousehold(): Promise<HouseholdInfo | null> {
     .eq("id", membership.household_id)
     .maybeSingle();
 
-  if (household) setHouseholdId(household.id);
+  if (household) {
+    // Appelé à chaque montage de l'écran Foyer : c'est aussi le point qui
+    // reprend une migration restée inachevée (crash/fermeture précédente).
+    // Pas d'action utilisateur explicite ici, donc on n'interrompt pas
+    // l'affichage sur un échec — l'app reste alors sur l'ancien
+    // household_id local (rien ne disparaît) et un prochain montage
+    // retentera automatiquement.
+    const outcome = await migrateLocalDataToHousehold({
+      oldHouseholdId: getHouseholdId(),
+      newHouseholdId: household.id,
+      authenticatedUserId: user.id,
+    });
+    if (outcome.success) confirmRemoteHousehold(household.id, user.id);
+  }
   return household as HouseholdInfo | null;
 }
 
@@ -70,7 +84,13 @@ export async function createHousehold(name: string): Promise<HouseholdInfo> {
   if (error) throw error;
 
   const household = data as HouseholdInfo;
-  setHouseholdId(household.id);
+  const outcome = await migrateLocalDataToHousehold({
+    oldHouseholdId: getHouseholdId(),
+    newHouseholdId: household.id,
+    authenticatedUserId: user.id,
+  });
+  if (!outcome.success) throw new Error("error.migrationFailed");
+  confirmRemoteHousehold(household.id, user.id);
   return household;
 }
 
@@ -133,6 +153,12 @@ export async function redeemApprovalCode(code: string): Promise<HouseholdInfo> {
   }
 
   const household = data as HouseholdInfo;
-  setHouseholdId(household.id);
+  const outcome = await migrateLocalDataToHousehold({
+    oldHouseholdId: getHouseholdId(),
+    newHouseholdId: household.id,
+    authenticatedUserId: user.id,
+  });
+  if (!outcome.success) throw new Error("error.migrationFailed");
+  confirmRemoteHousehold(household.id, user.id);
   return household;
 }

@@ -2,7 +2,7 @@
 
 import { db } from "./db";
 import { queueWrite } from "./offlineSync";
-import { getHouseholdId, getLocalUserId } from "./session";
+import { getEffectiveUserId, getHouseholdId } from "./session";
 import {
   DEFAULT_SHELF_LIFE_DAYS,
   type Category,
@@ -42,7 +42,7 @@ export async function addStockItem(input: NewStockItemInput): Promise<StockItem>
     purchase_date: new Date().toISOString().slice(0, 10),
     expiry_date: input.expiry_date ?? addDays(DEFAULT_SHELF_LIFE_DAYS[input.category]),
     price: input.price ?? null,
-    added_by: getLocalUserId(),
+    added_by: await getEffectiveUserId(),
     status: "in_stock",
     updated_at: new Date().toISOString(),
   };

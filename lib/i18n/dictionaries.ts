@@ -19,6 +19,7 @@ const fr: Dict = {
   "error.notSignedIn": "Vous devez être connecté pour faire ça",
   "error.invalidCode": "Code invalide",
   "error.alreadyMember": "Vous faites déjà partie de ce foyer",
+  "error.migrationFailed": "Le foyer a été créé, mais vos données locales n'ont pas pu être transférées. Réessayez depuis cet écran.",
 
   "home.tagline": "Scannez votre stock, évitez le gaspillage, laissez-nous vous proposer le menu du jour.",
   "home.expiringSoon": "{count} produit(s) périment bientôt : {items}",
@@ -298,6 +299,7 @@ const en: Dict = {
   "error.notSignedIn": "You need to be signed in to do that",
   "error.invalidCode": "Invalid code",
   "error.alreadyMember": "You're already part of this household",
+  "error.migrationFailed": "The household was created, but your local data couldn't be moved over. Retry from this screen.",
 
   "home.tagline": "Scan your stock, avoid waste, and let us suggest today's menu.",
   "home.expiringSoon": "{count} item(s) expiring soon: {items}",

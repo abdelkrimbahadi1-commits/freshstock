@@ -108,7 +108,24 @@ async function withCrossTabLock(fn: () => Promise<void>): Promise<void> {
   });
 }
 
+// Verrou exclusif utilisé par une migration de foyer (lib/householdMigration.ts) :
+// tant qu'il est posé, `flushSyncQueue()` ne démarre aucune nouvelle passe.
+// N'annule jamais une requête réseau déjà en vol — voir `withSyncPaused`.
+let migrationLock: Promise<void> | null = null;
+
+// Promesse de la passe de flush actuellement en vol (nulle si aucune passe
+// n'est active), utilisée par `withSyncPaused` pour attendre sa fin avant
+// de poser le verrou de migration.
+let currentFlushPromise: Promise<void> | null = null;
+
 export async function flushSyncQueue(): Promise<void> {
+  if (migrationLock) {
+    // Une migration de foyer est en cours : on ne démarre pas de nouvelle
+    // passe. `withSyncPaused` relance flushSyncQueue() une fois le verrou
+    // relâché, donc rien n'est perdu — la prochaine passe relit la file en
+    // entier de toute façon.
+    return;
+  }
   if (flushing) {
     // Une passe tourne déjà (potentiellement dans un état pas encore à
     // jour, ex. pas encore authentifiée) : on ne l'interrompt pas, mais on
@@ -117,15 +134,42 @@ export async function flushSyncQueue(): Promise<void> {
     return;
   }
   flushing = true;
+  currentFlushPromise = (async () => {
+    try {
+      let passes = 0;
+      do {
+        rerunRequested = false;
+        await withCrossTabLock(runFlush);
+        passes++;
+      } while (rerunRequested && passes < MAX_CONSECUTIVE_PASSES);
+    } finally {
+      flushing = false;
+      currentFlushPromise = null;
+    }
+  })();
+  await currentFlushPromise;
+}
+
+// Réservé à lib/householdMigration.ts. Empêche le démarrage de toute
+// nouvelle passe de flush, attend la fin d'une passe déjà en vol (sans
+// jamais l'annuler — une requête déjà partie avec l'ancien household_id
+// peut encore échouer et sera classée normalement, dead_letter ou retry),
+// exécute `fn`, puis relance flushSyncQueue() une fois `fn` terminé (succès
+// ou échec), pour ne jamais laisser la synchro bloquée.
+export async function withSyncPaused<T>(fn: () => Promise<T>): Promise<T> {
+  while (currentFlushPromise) {
+    await currentFlushPromise.catch(() => {});
+  }
+  let release!: () => void;
+  migrationLock = new Promise((resolve) => {
+    release = resolve;
+  });
   try {
-    let passes = 0;
-    do {
-      rerunRequested = false;
-      await withCrossTabLock(runFlush);
-      passes++;
-    } while (rerunRequested && passes < MAX_CONSECUTIVE_PASSES);
+    return await fn();
   } finally {
-    flushing = false;
+    migrationLock = null;
+    release();
+    void flushSyncQueue();
   }
 }
 
