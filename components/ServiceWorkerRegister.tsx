@@ -26,20 +26,6 @@ async function triggerPullIfSignedIn() {
   if (household) void pullHouseholdData({ householdId: getHouseholdId(), authenticatedUserId: user.id });
 }
 
-// Transmet l'origine Supabase réelle au Service Worker (public/sw.js n'a
-// pas accès à `process.env` au runtime, voir public/sw-rules.js). Simple
-// filet supplémentaire : les règles du SW savent déjà exclure Supabase sans
-// cette valeur (suffixe *.supabase.co, chemins d'auth connus).
-function sendSupabaseOriginTo(worker: ServiceWorker | null | undefined) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!worker || !url) return;
-  try {
-    worker.postMessage({ type: "SET_SUPABASE_ORIGIN", origin: new URL(url).origin });
-  } catch {
-    // URL mal formée : rien à transmettre, les règles de secours du SW suffisent.
-  }
-}
-
 export default function ServiceWorkerRegister() {
   const { t } = useLocale();
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
@@ -80,8 +66,6 @@ export default function ServiceWorkerRegister() {
       navigator.serviceWorker
         .register("/sw.js", { type: "module" })
         .then((registration) => {
-          sendSupabaseOriginTo(registration.active);
-
           // Un worker est déjà en attente au moment de l'enregistrement
           // (ex. onglet resté ouvert depuis avant un déploiement) : ce
           // n'est possible que si un autre a déjà pris le contrôle par le

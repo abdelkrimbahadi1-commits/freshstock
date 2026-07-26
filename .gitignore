@@ -43,3 +43,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# généré par scripts/generate-sw-config.js avant dev/build (voir package.json)
+/public/sw-config.js

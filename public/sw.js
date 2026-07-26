@@ -6,30 +6,25 @@ import {
   isCacheableResponse,
   resolveNavigation,
 } from "./sw-rules.js";
+import { SUPABASE_ORIGIN } from "./sw-config.js";
 
 // Incrémenter à chaque déploiement qui change des pages/assets visibles :
 // c'est ce qui déclenche la suppression des anciens caches à `activate`
 // (voir plus bas, `getStaleCacheNames`) — sans ce bump, rien n'est purgé.
-const CACHE_VERSION = "v12";
+const CACHE_VERSION = "v13";
 const CACHE_PREFIX = "freshstock-";
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
-// Origine Supabase transmise par le client (voir SET_SUPABASE_ORIGIN dans
-// ServiceWorkerRegister.tsx) — ce fichier statique n'a pas accès à
-// `process.env` au runtime. Tant qu'elle n'est pas encore reçue (ou après un
-// redémarrage du Service Worker par le navigateur, qui perd cet état en
-// mémoire), `sw-rules.js` retombe sur ses propres règles de secours
-// (suffixe *.supabase.co, chemins d'auth connus) : aucune requête Supabase
-// ne dépend donc uniquement de cette valeur.
-let supabaseOrigin = null;
-
+// SUPABASE_ORIGIN vient de public/sw-config.js, généré au build depuis
+// NEXT_PUBLIC_SUPABASE_URL (scripts/generate-sw-config.js, hooks
+// "predev"/"prebuild" dans package.json) — connue dès la toute première
+// requête interceptée, sans fenêtre transitoire. `sw-rules.js` garde quand
+// même ses propres règles de repli (suffixe *.supabase.co, chemins d'auth
+// connus) en filet de sécurité si jamais cette valeur était `null`
+// (Supabase non configuré) ou incorrecte.
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") {
     self.skipWaiting();
-    return;
-  }
-  if (event.data?.type === "SET_SUPABASE_ORIGIN" && typeof event.data.origin === "string") {
-    supabaseOrigin = event.data.origin;
   }
 });
 
@@ -94,7 +89,7 @@ self.addEventListener("fetch", (event) => {
   const strategy = classifyRequest(
     { method: request.method, url: request.url, mode: request.mode },
     self.location.origin,
-    supabaseOrigin
+    SUPABASE_ORIGIN
   );
 
   if (strategy === STRATEGY.NETWORK_ONLY || strategy === STRATEGY.NETWORK_FIRST_UNKNOWN) {
