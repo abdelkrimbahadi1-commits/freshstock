@@ -79,6 +79,12 @@ create table if not exists shopping_list (
 -- les projets Supabase où `shopping_list` existait déjà sans cette colonne.
 alter table shopping_list add column if not exists recipe_name text;
 
+-- LOT 4 (pull Supabase -> Dexie) : shopping_list n'avait aucune colonne
+-- d'horodatage. Utilisée uniquement pour classer créé/mis à jour dans le
+-- résultat du pull, jamais comme mécanisme de décision de conflit (voir
+-- lib/householdPull.ts, qui se base uniquement sur sync_queue pour ça).
+alter table shopping_list add column if not exists updated_at timestamptz not null default now();
+
 -- Avis utilisateurs (écrits ou dictés à l'oral puis transcrits côté client).
 create table if not exists feedback (
   id uuid primary key default gen_random_uuid(),

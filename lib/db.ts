@@ -61,6 +61,18 @@ export interface HouseholdMigrationRecord {
   result: MigrationResult | null;
 }
 
+// Métadonnées du pull Supabase -> Dexie (LOT 4) — voir lib/householdPull.ts.
+// Une ligne par foyer : `household_id` est déjà l'identifiant réel (pas une
+// clé générique type localStorage), donc naturellement compatible avec
+// plusieurs comptes sur le même navigateur sans confusion possible entre eux.
+export interface PullMetaRecord {
+  household_id: string;
+  last_pull_at: string | null;
+  last_pull_success_at: string | null;
+  last_pull_error: string | null;
+  pull_in_progress: boolean;
+}
+
 class FreshStockDB extends Dexie {
   stock_items!: EntityTable<StockItem, "id">;
   shopping_list!: EntityTable<ShoppingListItem, "id">;
@@ -69,6 +81,7 @@ class FreshStockDB extends Dexie {
   feedback!: EntityTable<Feedback, "id">;
   sync_queue!: EntityTable<SyncQueueEntry, "id">;
   household_migrations!: EntityTable<HouseholdMigrationRecord, "id">;
+  pull_meta!: EntityTable<PullMetaRecord, "household_id">;
 
   constructor() {
     super("freshstock");
@@ -123,6 +136,18 @@ class FreshStockDB extends Dexie {
       feedback: "id, household_id, created_at",
       sync_queue: "++id, table, created_at, status, next_retry_at",
       household_migrations: "id, old_household_id, new_household_id, status",
+    });
+    // v5 : table neuve `pull_meta` (LOT 4, pull Supabase -> Dexie) — pas
+    // d'`upgrade()` nécessaire.
+    this.version(5).stores({
+      stock_items: "id, household_id, status, expiry_date, category",
+      shopping_list: "id, household_id, checked",
+      products: "id, barcode",
+      meal_history: "id, household_id, date",
+      feedback: "id, household_id, created_at",
+      sync_queue: "++id, table, created_at, status, next_retry_at",
+      household_migrations: "id, old_household_id, new_household_id, status",
+      pull_meta: "household_id",
     });
   }
 }

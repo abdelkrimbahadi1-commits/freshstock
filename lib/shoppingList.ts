@@ -47,7 +47,11 @@ export async function addShoppingListItem(
       const names = new Set((existing.recipe_name ?? "").split(", ").filter(Boolean));
       if (!names.has(recipeName)) {
         names.add(recipeName);
-        const updated = { ...existing, recipe_name: Array.from(names).join(", ") };
+        const updated = {
+          ...existing,
+          recipe_name: Array.from(names).join(", "),
+          updated_at: new Date().toISOString(),
+        };
         await db.shopping_list.put(updated);
         await queueWrite("shopping_list", "upsert", updated as unknown as Record<string, unknown>);
       }
@@ -64,6 +68,7 @@ export async function addShoppingListItem(
     source,
     recipe_name: recipeName,
     checked: false,
+    updated_at: new Date().toISOString(),
   };
   await db.shopping_list.put(entry);
   await queueWrite("shopping_list", "upsert", entry as unknown as Record<string, unknown>);
@@ -86,7 +91,7 @@ export async function addMissingIngredients(
 }
 
 export async function toggleShoppingListItem(id: string, checked: boolean): Promise<void> {
-  await db.shopping_list.update(id, { checked });
+  await db.shopping_list.update(id, { checked, updated_at: new Date().toISOString() });
   const item = await db.shopping_list.get(id);
   if (item) await queueWrite("shopping_list", "upsert", item as unknown as Record<string, unknown>);
 }
@@ -96,7 +101,7 @@ export async function updateShoppingListItemQuantity(
   quantity: number,
   unit: string
 ): Promise<void> {
-  await db.shopping_list.update(id, { quantity, unit });
+  await db.shopping_list.update(id, { quantity, unit, updated_at: new Date().toISOString() });
   const item = await db.shopping_list.get(id);
   if (item) await queueWrite("shopping_list", "upsert", item as unknown as Record<string, unknown>);
 }

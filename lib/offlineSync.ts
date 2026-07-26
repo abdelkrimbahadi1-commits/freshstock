@@ -114,16 +114,22 @@ async function withCrossTabLock(fn: () => Promise<void>): Promise<void> {
 let migrationLock: Promise<void> | null = null;
 
 // Promesse de la passe de flush actuellement en vol (nulle si aucune passe
-// n'est active), utilisée par `withSyncPaused` pour attendre sa fin avant
-// de poser le verrou de migration.
+// n'est active), utilisée par `withSyncPaused`/`withPullPaused` pour
+// attendre sa fin avant de démarrer.
 let currentFlushPromise: Promise<void> | null = null;
 
+// Promesse du pull actuellement en vol (lib/householdPull.ts), nulle sinon.
+// Sert à empêcher `flushSyncQueue()` de démarrer une passe pendant qu'un
+// pull réécrit des lignes Dexie (évite qu'un push et un pull modifient les
+// mêmes lignes en même temps), et à ce qu'une migration attende sa fin.
+let currentPullPromise: Promise<void> | null = null;
+
 export async function flushSyncQueue(): Promise<void> {
-  if (migrationLock) {
-    // Une migration de foyer est en cours : on ne démarre pas de nouvelle
-    // passe. `withSyncPaused` relance flushSyncQueue() une fois le verrou
-    // relâché, donc rien n'est perdu — la prochaine passe relit la file en
-    // entier de toute façon.
+  if (migrationLock || currentPullPromise) {
+    // Une migration de foyer ou un pull Supabase -> Dexie est en cours : on
+    // ne démarre pas de nouvelle passe de push. `withSyncPaused`/`withPullPaused`
+    // relance flushSyncQueue() une fois terminé, donc rien n'est perdu — la
+    // prochaine passe relit la file en entier de toute façon.
     return;
   }
   if (flushing) {
@@ -151,14 +157,16 @@ export async function flushSyncQueue(): Promise<void> {
 }
 
 // Réservé à lib/householdMigration.ts. Empêche le démarrage de toute
-// nouvelle passe de flush, attend la fin d'une passe déjà en vol (sans
-// jamais l'annuler — une requête déjà partie avec l'ancien household_id
-// peut encore échouer et sera classée normalement, dead_letter ou retry),
-// exécute `fn`, puis relance flushSyncQueue() une fois `fn` terminé (succès
-// ou échec), pour ne jamais laisser la synchro bloquée.
+// nouvelle passe de flush ou de pull, attend la fin d'une passe déjà en vol
+// (sans jamais l'annuler — une requête déjà partie avec l'ancien
+// household_id peut encore échouer et sera classée normalement, dead_letter
+// ou retry), exécute `fn`, puis relance flushSyncQueue() une fois `fn`
+// terminé (succès ou échec), pour ne jamais laisser la synchro bloquée.
+// La migration reste l'opération la plus prioritaire : elle attend flush ET
+// pull, mais aucun des deux ne peut démarrer tant qu'elle tient le verrou.
 export async function withSyncPaused<T>(fn: () => Promise<T>): Promise<T> {
-  while (currentFlushPromise) {
-    await currentFlushPromise.catch(() => {});
+  while (currentFlushPromise || currentPullPromise) {
+    await (currentFlushPromise ?? currentPullPromise)?.catch(() => {});
   }
   let release!: () => void;
   migrationLock = new Promise((resolve) => {
@@ -168,6 +176,33 @@ export async function withSyncPaused<T>(fn: () => Promise<T>): Promise<T> {
     return await fn();
   } finally {
     migrationLock = null;
+    release();
+    void flushSyncQueue();
+  }
+}
+
+// Réservé à lib/householdPull.ts. Attend la fin d'une migration ou d'une
+// passe de flush déjà en vol (le pull ne démarre jamais en même temps
+// qu'un push ou une migration touchant les mêmes lignes Dexie), sérialise
+// aussi contre un autre pull déjà en cours, exécute `fn`, puis relance
+// flushSyncQueue() une fois terminé (succès ou échec) pour ne jamais
+// laisser la synchro bloquée. Le regroupement des appels concurrents à
+// pullHouseholdData (un seul appel réseau, résultat partagé) est géré par
+// lib/householdPull.ts lui-même ; ce verrou n'est qu'un filet de sécurité
+// garantissant qu'aucune passe de pull ne s'exécute jamais en parallèle
+// d'une autre, d'un flush, ou d'une migration.
+export async function withPullPaused<T>(fn: () => Promise<T>): Promise<T> {
+  while (migrationLock || currentFlushPromise || currentPullPromise) {
+    await (migrationLock ?? currentFlushPromise ?? currentPullPromise)?.catch(() => {});
+  }
+  let release!: () => void;
+  currentPullPromise = new Promise((resolve) => {
+    release = resolve;
+  });
+  try {
+    return await fn();
+  } finally {
+    currentPullPromise = null;
     release();
     void flushSyncQueue();
   }
