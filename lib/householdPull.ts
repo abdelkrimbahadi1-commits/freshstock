@@ -1,6 +1,6 @@
 "use client";
 
-import { db, SYNC_STATUS } from "./db";
+import { db, SYNC_STATUS, type PullMetaRecord, type PullTableMeta } from "./db";
 import { withPullPaused } from "./offlineSync";
 import { createClient } from "./supabase/client";
 import { getHouseholdId } from "./session";
@@ -31,6 +31,12 @@ export interface PullTableResult {
   skippedConflict: number; // écriture locale active (pending/retry_pending/processing/delete) protégée
   protectedDeadLetter: number; // écriture locale dead_letter, jamais touchée automatiquement
   deletedLocally: number;
+  // Ligne locale absente du snapshot distant mais conservée parce qu'aucun
+  // snapshot complet n'avait encore réussi pour cette table+foyer avant ce
+  // pull — voir hasCompletedSnapshotBefore. Distinct de skippedConflict
+  // (qui protège une écriture en attente) : ici, rien ne protège la ligne
+  // sinon l'absence de référence fiable pour juger une absence distante.
+  preservedUntrackedLocal: number;
   truncated: boolean; // cap de sécurité MAX_PAGES atteint — diagnostic seulement
 }
 
@@ -57,8 +63,13 @@ function emptyTableResult(): PullTableResult {
     skippedConflict: 0,
     protectedDeadLetter: 0,
     deletedLocally: 0,
+    preservedUntrackedLocal: 0,
     truncated: false,
   };
+}
+
+function emptyTableMeta(): PullTableMeta {
+  return { has_completed_snapshot: false, last_success_at: null, last_error: null };
 }
 
 function emptyResult(): PullResult {
@@ -156,10 +167,21 @@ async function buildQueueIndex(
 // (clé primaire réelle des deux côtés). Idempotent : rejouer le même
 // snapshot sans changement entre-temps ne produit aucune écriture
 // supplémentaire.
+//
+// `hasCompletedSnapshotBefore` : tant qu'aucun snapshot complet n'a jamais
+// réussi pour cette table+foyer, on ne peut pas déduire d'une absence dans
+// CE snapshot qu'une ligne locale a été supprimée à distance — l'hypothèse
+// "toute donnée locale non synchronisée a une entrée sync_queue" peut être
+// fausse (données anciennes, queue perdue, écriture directe historique dans
+// Dexie). Dans ce cas, une ligne locale sans protection sync_queue mais
+// absente du snapshot est conservée (preservedUntrackedLocal) plutôt que
+// supprimée. La suppression par absence n'est autorisée qu'à partir du
+// moment où un premier snapshot complet a réussi pour cette table+foyer.
 async function applyTableSnapshot(
   table: PulledTable,
   householdId: string,
-  remoteRows: Record<string, unknown>[]
+  remoteRows: Record<string, unknown>[],
+  hasCompletedSnapshotBefore: boolean
 ): Promise<Omit<PullTableResult, "fetched" | "truncated">> {
   return db.transaction("rw", db.table(table), db.sync_queue, async () => {
     const { activeIds, deadLetterIds } = await buildQueueIndex(table);
@@ -173,6 +195,7 @@ async function applyTableSnapshot(
     let skippedConflict = 0;
     let protectedDeadLetter = 0;
     let deletedLocally = 0;
+    let preservedUntrackedLocal = 0;
 
     for (const remoteRow of remoteRows) {
       const id = remoteRow.id as string;
@@ -205,45 +228,53 @@ async function applyTableSnapshot(
         protectedDeadLetter++;
         continue;
       }
-      // Absente du snapshot distant, aucune écriture locale en attente :
-      // supprimée à distance (stratégie de snapshot complet). Le snapshot
-      // est nécessairement complet à ce stade (fetchAllPages n'aurait pas
-      // renvoyé de lignes sinon, voir l'appelant).
+      if (!hasCompletedSnapshotBefore) {
+        preservedUntrackedLocal++;
+        continue;
+      }
+      // Absente du snapshot distant, aucune écriture locale en attente, et
+      // un snapshot de référence complet existe déjà pour cette table+foyer
+      // (donc une absence signifie ici une vraie suppression distante) :
+      // supprimée localement.
       await dexieTable.delete(id);
       deletedLocally++;
     }
 
-    return { created, updated, skippedConflict, protectedDeadLetter, deletedLocally };
+    return { created, updated, skippedConflict, protectedDeadLetter, deletedLocally, preservedUntrackedLocal };
   });
 }
 
-async function recordPullOutcome(
+function loadTablesMeta(existing: PullMetaRecord | undefined): Record<PulledTable, PullTableMeta> {
+  return {
+    stock_items: existing?.stock_items ?? emptyTableMeta(),
+    shopping_list: existing?.shopping_list ?? emptyTableMeta(),
+    feedback: existing?.feedback ?? emptyTableMeta(),
+  };
+}
+
+async function persistPullMeta(
   householdId: string,
-  { success, error }: { success: boolean; error: string | null }
+  pullInProgress: boolean,
+  tablesMeta: Record<PulledTable, PullTableMeta>
 ): Promise<void> {
-  const existing = await db.pull_meta.get(householdId);
   await db.pull_meta.put({
     household_id: householdId,
     last_pull_at: nowIso(),
-    last_pull_success_at: success ? nowIso() : (existing?.last_pull_success_at ?? null),
-    last_pull_error: error,
-    pull_in_progress: false,
+    pull_in_progress: pullInProgress,
+    stock_items: tablesMeta.stock_items,
+    shopping_list: tablesMeta.shopping_list,
+    feedback: tablesMeta.feedback,
   });
 }
 
 async function runPull({ householdId, authenticatedUserId }: PullInput): Promise<PullResult> {
   return withPullPaused(async () => {
     const existingMeta = await db.pull_meta.get(householdId);
-    await db.pull_meta.put({
-      household_id: householdId,
-      last_pull_at: existingMeta?.last_pull_at ?? null,
-      last_pull_success_at: existingMeta?.last_pull_success_at ?? null,
-      last_pull_error: existingMeta?.last_pull_error ?? null,
-      pull_in_progress: true,
-    });
+    const tablesMeta = loadTablesMeta(existingMeta);
+    await persistPullMeta(householdId, true, tablesMeta);
 
     const abort = async (message: string): Promise<PullResult> => {
-      await recordPullOutcome(householdId, { success: false, error: message });
+      await persistPullMeta(householdId, false, tablesMeta);
       const result = emptyResult();
       result.errors.push({ table: "*", message });
       return result;
@@ -279,30 +310,36 @@ async function runPull({ householdId, authenticatedUserId }: PullInput): Promise
 
     const result = emptyResult();
     for (const table of PULLED_TABLES) {
+      const hadCompletedSnapshotBefore = tablesMeta[table].has_completed_snapshot;
       const { rows, error, truncated } = await fetchAllPages(supabase, table, householdId);
       if (error) {
         result.perTable[table] = { ...emptyTableResult(), truncated };
         result.errors.push({ table, message: error });
-        continue; // snapshot incomplet pour cette table : aucune modification appliquée
+        // Échec de pagination : le snapshot de référence et le dernier
+        // succès de CETTE table ne sont pas avancés — seule `last_error`
+        // change. Aucune donnée ni suppression n'est appliquée pour elle
+        // (voir fetchAllPages, qui ne renvoie aucune ligne sur erreur).
+        tablesMeta[table] = { ...tablesMeta[table], last_error: error };
+        continue;
       }
-      const applied = await applyTableSnapshot(table, householdId, rows);
+      const applied = await applyTableSnapshot(table, householdId, rows, hadCompletedSnapshotBefore);
       result.perTable[table] = { fetched: rows.length, truncated, ...applied };
+      // Ce pull a réussi intégralement pour cette table : elle dispose
+      // désormais (ou continue de disposer) d'un snapshot de référence
+      // complet, à partir duquel une absence pourra être traitée comme une
+      // suppression distante lors d'un prochain pull.
+      tablesMeta[table] = { has_completed_snapshot: true, last_success_at: nowIso(), last_error: null };
     }
 
-    const hasErrors = result.errors.length > 0;
-    await recordPullOutcome(householdId, {
-      success: !hasErrors,
-      error: hasErrors ? result.errors.map((e) => `${e.table}: ${e.message}`).join(" | ") : null,
-    });
-
+    await persistPullMeta(householdId, false, tablesMeta);
     return result;
   });
 }
 
 async function checkAntiStormAndRun(input: PullInput): Promise<PullResult> {
   const meta = await db.pull_meta.get(input.householdId);
-  if (meta?.last_pull_success_at) {
-    const elapsed = Date.now() - new Date(meta.last_pull_success_at).getTime();
+  if (meta?.last_pull_at) {
+    const elapsed = Date.now() - new Date(meta.last_pull_at).getTime();
     if (elapsed < MIN_PULL_INTERVAL_MS) {
       return { ...emptyResult(), skipped: true };
     }

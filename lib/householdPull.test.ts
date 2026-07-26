@@ -182,13 +182,39 @@ describe("pullHouseholdData", () => {
     expect(stored).toBeDefined();
   });
 
-  it("supprime localement une ligne absente du snapshot distant sans écriture en attente", async () => {
+  it("premier pull avec une ligne locale absente de Supabase et sans queue : ligne conservée (pas de snapshot de référence antérieur)", async () => {
     await db.stock_items.put(stockRow("s1", HOUSEHOLD_ID));
     vi.mocked(createClient).mockReturnValue(makeFakeSupabase({ tableData: {} }) as never);
 
     const result = await pullHouseholdData({ householdId: HOUSEHOLD_ID, authenticatedUserId: AUTH_USER });
 
-    expect(result.perTable.stock_items).toMatchObject({ deletedLocally: 1 });
+    // Aucun snapshot de référence n'existait avant ce pull pour stock_items :
+    // la ligne locale absente du snapshot distant est conservée, pas supprimée.
+    expect(result.perTable.stock_items).toMatchObject({ deletedLocally: 0, preservedUntrackedLocal: 1 });
+    expect(await db.stock_items.get("s1")).toBeDefined();
+
+    const meta = await db.pull_meta.get(HOUSEHOLD_ID);
+    expect(meta?.stock_items.has_completed_snapshot).toBe(true); // ce pull a néanmoins réussi intégralement
+  });
+
+  it("deuxième pull complet où la ligne est toujours absente : suppression autorisée une fois le snapshot de référence établi", async () => {
+    await db.stock_items.put(stockRow("s1", HOUSEHOLD_ID));
+    vi.mocked(createClient).mockReturnValue(makeFakeSupabase({ tableData: {} }) as never);
+
+    const first = await pullHouseholdData({ householdId: HOUSEHOLD_ID, authenticatedUserId: AUTH_USER });
+    expect(first.perTable.stock_items).toMatchObject({ deletedLocally: 0, preservedUntrackedLocal: 1 });
+    expect(await db.stock_items.get("s1")).toBeDefined();
+
+    // Débloque l'anti-rafale pour un second pull, sans rien changer côté
+    // distant (la ligne reste absente).
+    const metaAfterFirst = await db.pull_meta.get(HOUSEHOLD_ID);
+    await db.pull_meta.put({ ...metaAfterFirst!, last_pull_at: new Date(0).toISOString() });
+
+    const second = await pullHouseholdData({ householdId: HOUSEHOLD_ID, authenticatedUserId: AUTH_USER });
+
+    // Un snapshot de référence complet existe désormais (établi par le 1er
+    // pull) : l'absence peut maintenant être traitée comme une suppression.
+    expect(second.perTable.stock_items).toMatchObject({ deletedLocally: 1, preservedUntrackedLocal: 0 });
     expect(await db.stock_items.get("s1")).toBeUndefined();
   });
 
@@ -224,7 +250,9 @@ describe("pullHouseholdData", () => {
     expect(stored?.quantity).toBe(3);
 
     const meta = await db.pull_meta.get(HOUSEHOLD_ID);
-    expect(meta?.last_pull_error).toContain("stock_items");
+    expect(meta?.stock_items.last_error).toContain("stock_items");
+    expect(meta?.stock_items.has_completed_snapshot).toBe(false);
+    expect(meta?.stock_items.last_success_at).toBeNull();
     expect(meta?.pull_in_progress).toBe(false);
   });
 
@@ -342,7 +370,7 @@ describe("pullHouseholdData", () => {
     // Débloque l'anti-rafale pour simuler un second déclenchement plus tard
     // (ex. retour "online"), sans rien changer côté distant entre-temps.
     const meta = await db.pull_meta.get(HOUSEHOLD_ID);
-    await db.pull_meta.put({ ...meta!, last_pull_success_at: new Date(0).toISOString() });
+    await db.pull_meta.put({ ...meta!, last_pull_at: new Date(0).toISOString() });
 
     const second = await pullHouseholdData({ householdId: HOUSEHOLD_ID, authenticatedUserId: AUTH_USER });
     expect(second.perTable.stock_items).toMatchObject({ created: 0, updated: 0, deletedLocally: 0 });
@@ -376,5 +404,62 @@ describe("pullHouseholdData", () => {
     const result = await pullHouseholdData({ householdId: HOUSEHOLD_ID, authenticatedUserId: AUTH_USER });
 
     expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it("échec sur la deuxième page : aucune modification ni suppression pour cette table", async () => {
+    // La 1ère page (500 lignes) réussit, la 2e échoue : le snapshot est
+    // incomplet dans son ensemble, rien ne doit être appliqué.
+    await db.stock_items.put(stockRow("s1", HOUSEHOLD_ID, { quantity: 3 }));
+    const rows = Array.from({ length: 505 }, (_, i) =>
+      stockRow(`r${String(i).padStart(4, "0")}`, HOUSEHOLD_ID)
+    );
+    vi.mocked(createClient).mockReturnValue(
+      makeFakeSupabase({ tableData: { stock_items: rows }, tableErrorOnPage: { stock_items: 1 } }) as never
+    );
+
+    const result = await pullHouseholdData({ householdId: HOUSEHOLD_ID, authenticatedUserId: AUTH_USER });
+
+    expect(result.errors).toEqual([{ table: "stock_items", message: "erreur simulée sur stock_items" }]);
+    expect(result.perTable.stock_items).toMatchObject({
+      fetched: 0,
+      created: 0,
+      updated: 0,
+      deletedLocally: 0,
+      preservedUntrackedLocal: 0,
+    });
+    // La ligne locale préexistante n'a pas bougé, et aucune des 505 lignes
+    // distantes de la 1ère page n'a été importée.
+    const stored = await db.stock_items.get("s1");
+    expect(stored?.quantity).toBe(3);
+    expect(await db.stock_items.count()).toBe(1);
+
+    const meta = await db.pull_meta.get(HOUSEHOLD_ID);
+    expect(meta?.stock_items.has_completed_snapshot).toBe(false);
+    expect(meta?.stock_items.last_success_at).toBeNull();
+    expect(meta?.stock_items.last_error).toContain("stock_items");
+  }, 15000);
+
+  it("une table réussit et une autre échoue : les métadonnées de réussite sont conservées séparément par table", async () => {
+    vi.mocked(createClient).mockReturnValue(
+      makeFakeSupabase({
+        tableData: { stock_items: [stockRow("s1", HOUSEHOLD_ID)] },
+        tableErrorOnPage: { shopping_list: 0 },
+      }) as never
+    );
+
+    const result = await pullHouseholdData({ householdId: HOUSEHOLD_ID, authenticatedUserId: AUTH_USER });
+
+    expect(result.perTable.stock_items.created).toBe(1);
+    expect(result.errors).toEqual([{ table: "shopping_list", message: "erreur simulée sur shopping_list" }]);
+
+    const meta = await db.pull_meta.get(HOUSEHOLD_ID);
+    expect(meta?.stock_items.has_completed_snapshot).toBe(true);
+    expect(meta?.stock_items.last_success_at).not.toBeNull();
+    expect(meta?.stock_items.last_error).toBeNull();
+    expect(meta?.shopping_list.has_completed_snapshot).toBe(false);
+    expect(meta?.shopping_list.last_success_at).toBeNull();
+    expect(meta?.shopping_list.last_error).toContain("shopping_list");
+    // feedback n'était affecté par aucune erreur : réussit normalement aussi.
+    expect(meta?.feedback.has_completed_snapshot).toBe(true);
   });
 });
