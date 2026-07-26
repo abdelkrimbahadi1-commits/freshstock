@@ -61,6 +61,35 @@ export interface HouseholdMigrationRecord {
   result: MigrationResult | null;
 }
 
+// État du pull pour UNE table d'un foyer donné. `has_completed_snapshot`
+// est la donnée de sécurité centrale : tant qu'aucun snapshot complet n'a
+// jamais réussi pour cette table+foyer, une ligne locale absente du
+// snapshot distant n'est JAMAIS supprimée (voir lib/householdPull.ts) —
+// une table qui échoue pendant que les autres réussissent ne doit jamais
+// perdre cette information au profit d'un simple horodatage global au
+// foyer, d'où le suivi par table plutôt qu'un seul `last_pull_success_at`.
+export interface PullTableMeta {
+  has_completed_snapshot: boolean;
+  last_success_at: string | null;
+  last_error: string | null;
+}
+
+// Métadonnées du pull Supabase -> Dexie (LOT 4) — voir lib/householdPull.ts.
+// Une ligne par foyer : `household_id` est déjà l'identifiant réel (pas une
+// clé générique type localStorage), donc naturellement compatible avec
+// plusieurs comptes sur le même navigateur sans confusion possible entre eux.
+// `last_pull_at` (tentative, réussie ou non) sert uniquement à l'anti-rafale
+// réseau ; la sécurité des suppressions repose exclusivement sur l'état par
+// table ci-dessus.
+export interface PullMetaRecord {
+  household_id: string;
+  last_pull_at: string | null;
+  pull_in_progress: boolean;
+  stock_items: PullTableMeta;
+  shopping_list: PullTableMeta;
+  feedback: PullTableMeta;
+}
+
 class FreshStockDB extends Dexie {
   stock_items!: EntityTable<StockItem, "id">;
   shopping_list!: EntityTable<ShoppingListItem, "id">;
@@ -69,6 +98,7 @@ class FreshStockDB extends Dexie {
   feedback!: EntityTable<Feedback, "id">;
   sync_queue!: EntityTable<SyncQueueEntry, "id">;
   household_migrations!: EntityTable<HouseholdMigrationRecord, "id">;
+  pull_meta!: EntityTable<PullMetaRecord, "household_id">;
 
   constructor() {
     super("freshstock");
@@ -123,6 +153,18 @@ class FreshStockDB extends Dexie {
       feedback: "id, household_id, created_at",
       sync_queue: "++id, table, created_at, status, next_retry_at",
       household_migrations: "id, old_household_id, new_household_id, status",
+    });
+    // v5 : table neuve `pull_meta` (LOT 4, pull Supabase -> Dexie) — pas
+    // d'`upgrade()` nécessaire.
+    this.version(5).stores({
+      stock_items: "id, household_id, status, expiry_date, category",
+      shopping_list: "id, household_id, checked",
+      products: "id, barcode",
+      meal_history: "id, household_id, date",
+      feedback: "id, household_id, created_at",
+      sync_queue: "++id, table, created_at, status, next_retry_at",
+      household_migrations: "id, old_household_id, new_household_id, status",
+      pull_meta: "household_id",
     });
   }
 }

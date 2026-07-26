@@ -81,6 +81,7 @@ describe("migrateLocalDataToHousehold", () => {
       source: "manual",
       recipe_name: null,
       checked: false,
+      updated_at: "2026-07-01T00:00:00.000Z",
     });
     await db.feedback.put({ id: "fb-1", household_id: OLD_ID, message: "top", created_at: "2026-07-01T00:00:00.000Z" });
     await db.meal_history.put({ id: "mh-1", household_id: OLD_ID, recipe_id: "r1", date: "2026-07-01", ingredients_used: [] });

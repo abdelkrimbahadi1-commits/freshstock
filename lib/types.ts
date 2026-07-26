@@ -86,6 +86,7 @@ export interface ShoppingListItem {
   source: "manual" | "auto";
   recipe_name: string | null; // nom de la recette d'origine si source === "auto"
   checked: boolean;
+  updated_at: string;
 }
 
 export interface Feedback {
