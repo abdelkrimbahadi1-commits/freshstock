@@ -12,6 +12,7 @@ import {
   missingPriceDiscardedCount,
   type BudgetSummary,
 } from "@/lib/budget";
+import { triggerPullIfSignedIn } from "@/lib/household";
 import { listAllStockItems } from "@/lib/stock";
 import type { StockItem } from "@/lib/types";
 
@@ -24,10 +25,18 @@ export default function BudgetPage() {
   const [detail, setDetail] = useState<DetailKey>(null);
 
   useEffect(() => {
-    void listAllStockItems().then((i) => {
-      setItems(i);
-      setSummary(computeBudgetSummary(i));
-    });
+    // Attend un pull avant de calculer : sans ça, un onglet resté ouvert
+    // depuis avant la dernière modification d'un autre membre du foyer
+    // (ex. un article marqué "Consommé" ailleurs) affichait des montants
+    // calculés sur un stock_items local périmé jusqu'au prochain
+    // rechargement complet de la page.
+    void triggerPullIfSignedIn()
+      .catch(() => undefined)
+      .then(() => listAllStockItems())
+      .then((i) => {
+        setItems(i);
+        setSummary(computeBudgetSummary(i));
+      });
   }, []);
 
   const detailItems: StockItem[] =

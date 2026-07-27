@@ -19,6 +19,26 @@ export interface JoinRequest {
   created_at: string;
 }
 
+// Point d'entrée partagé pour rafraîchir les données du foyer avant un
+// écran dont les chiffres doivent être à jour (ex. Budget). Contrairement à
+// getMyHousehold() (pull fire-and-forget, pour ne pas ralentir l'écran
+// Foyer), le pull est ici *attendu* : un onglet resté ouvert longtemps ne
+// se contente pas d'un pull déclenché au montage de l'app puis jamais
+// rejoué — sans ce réveil explicite, un membre du foyer pouvait voir des
+// montants de budget calculés sur un stock_items local périmé tant qu'il
+// n'avait pas rechargé la page entière.
+export async function triggerPullIfSignedIn(): Promise<void> {
+  const supabase = createClient();
+  if (!supabase) return;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const household = await getMyHousehold();
+  if (household) await pullHouseholdData({ householdId: getHouseholdId(), authenticatedUserId: user.id });
+}
+
 export async function isSignedIn(): Promise<boolean> {
   const supabase = createClient();
   if (!supabase) return false;

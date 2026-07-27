@@ -2,29 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/LocaleProvider";
-import { getMyHousehold } from "@/lib/household";
+import { triggerPullIfSignedIn } from "@/lib/household";
 import { registerSyncListeners } from "@/lib/offlineSync";
-import { getHouseholdId } from "@/lib/session";
-import { pullHouseholdData } from "@/lib/householdPull";
 import { createClient } from "@/lib/supabase/client";
-
-// Déclenche un pull pour le foyer confirmé de l'utilisateur authentifié.
-// `getMyHousehold()` fait déjà la vérification d'appartenance et gère la
-// reprise d'une migration inachevée ; on ne fait ici que réagir à son
-// résultat pour lancer le pull. Fire-and-forget : l'anti-rafale de
-// pullHouseholdData absorbe les déclenchements rapprochés (montage, retour
-// "online", SIGNED_IN) sans appel réseau superflu.
-async function triggerPullIfSignedIn() {
-  const supabase = createClient();
-  if (!supabase) return;
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
-
-  const household = await getMyHousehold();
-  if (household) void pullHouseholdData({ householdId: getHouseholdId(), authenticatedUserId: user.id });
-}
 
 export default function ServiceWorkerRegister() {
   const { t } = useLocale();
