@@ -90,6 +90,7 @@ const fr: Dict = {
   "form.expiryLabel": "Date de péremption (DLC/DDM)",
   "form.pricePlaceholder": "Prix payé (optionnel, €)",
   "form.saving": "Ajout…",
+  "unit.unite": "unité",
 
   "month.1": "Janvier",
   "month.2": "Février",
@@ -378,6 +379,7 @@ const en: Dict = {
   "form.expiryLabel": "Expiry / best-before date",
   "form.pricePlaceholder": "Price paid (optional)",
   "form.saving": "Adding…",
+  "unit.unite": "unit",
 
   "month.1": "January",
   "month.2": "February",
@@ -591,4 +593,15 @@ export function translate(
     (acc, [k, v]) => acc.replaceAll(`{${k}}`, String(v)),
     template
   );
+}
+
+// Traduit une unité de quantité (stock, courses, ingrédients de recette)
+// quand elle a une entrée dédiée ("unite" -> "unité"/"unit") ; les autres
+// unités ("g", "ml"...) sont déjà les mêmes dans les deux langues et
+// affichées telles quelles.
+export function unitLabel(
+  t: (key: string, params?: Record<string, string | number>) => string,
+  unit: string
+): string {
+  return unit === "unite" ? t("unit.unite") : unit;
 }

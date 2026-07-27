@@ -7,6 +7,7 @@ import BackButton from "@/components/BackButton";
 import ExpiryDatePicker from "@/components/ExpiryDatePicker";
 import { useLocale } from "@/components/LocaleProvider";
 import ScanProduct, { type ResolvedProduct } from "@/components/ScanProduct";
+import { unitLabel } from "@/lib/i18n/dictionaries";
 import { suggestMenus } from "@/lib/menuEngine";
 import { listRecentMealHistory } from "@/lib/mealHistory";
 import { externalRecipeLinks } from "@/lib/recipeLinks";
@@ -280,7 +281,7 @@ export default function StockPage() {
                         <div className="min-w-0">
                           <p className="font-medium truncate">{item.name}</p>
                           <p className="text-xs opacity-60">
-                            {item.quantity} {item.unit}
+                            {item.quantity} {unitLabel(t, item.unit)}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">

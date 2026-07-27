@@ -36,7 +36,7 @@ export default function AddStockItemForm({
   const [name, setName] = useState(initialName);
   const [category, setCategory] = useState<Category>(initialCategory);
   const [quantity, setQuantity] = useState(1);
-  const [unit, setUnit] = useState("unite");
+  const [unit, setUnit] = useState("");
   const [location, setLocation] = useState<StockLocation>("placard");
   const [expiryDate, setExpiryDate] = useState(addDays(DEFAULT_SHELF_LIFE_DAYS[initialCategory]));
   const [price, setPrice] = useState<string>("");

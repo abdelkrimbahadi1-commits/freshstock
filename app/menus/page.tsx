@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import BackButton from "@/components/BackButton";
 import { useLocale } from "@/components/LocaleProvider";
+import { unitLabel } from "@/lib/i18n/dictionaries";
 import { allTags, detectNutritionGap, detectRepetitionWarning, suggestMenus } from "@/lib/menuEngine";
 import { cookMenu, listRecentMealHistory } from "@/lib/mealHistory";
 import { externalRecipeLinks } from "@/lib/recipeLinks";
@@ -141,7 +142,7 @@ export default function MenusPage() {
               <ul className="text-sm list-disc list-inside space-y-0.5 opacity-80">
                 {scaledIngredients(detailSuggestion.recipe.ingredients).map((i) => (
                   <li key={i.key}>
-                    {t(`ingredient.${i.key}`)} — {i.quantity} {i.unit}
+                    {t(`ingredient.${i.key}`)} — {i.quantity} {unitLabel(t, i.unit)}
                   </li>
                 ))}
               </ul>
@@ -153,7 +154,7 @@ export default function MenusPage() {
                 <ul className="text-sm list-disc list-inside space-y-0.5 text-amber-700 dark:text-amber-400">
                   {scaledIngredients(detailSuggestion.missingIngredients).map((i) => (
                     <li key={i.key}>
-                      {t(`ingredient.${i.key}`)} — {i.quantity} {i.unit}
+                      {t(`ingredient.${i.key}`)} — {i.quantity} {unitLabel(t, i.unit)}
                     </li>
                   ))}
                 </ul>

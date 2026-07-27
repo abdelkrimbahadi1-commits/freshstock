@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import BackButton from "@/components/BackButton";
 import { useLocale } from "@/components/LocaleProvider";
+import { unitLabel } from "@/lib/i18n/dictionaries";
 import {
   addShoppingListItem,
   listKnownArticleNames,
@@ -27,11 +28,11 @@ export default function CoursesPage() {
   const [name, setName] = useState("");
   const [useOtherName, setUseOtherName] = useState(false);
   const [quantity, setQuantity] = useState(1);
-  const [unit, setUnit] = useState("unite");
+  const [unit, setUnit] = useState("");
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuantity, setEditQuantity] = useState(1);
-  const [editUnit, setEditUnit] = useState("unite");
+  const [editUnit, setEditUnit] = useState("");
 
   async function refresh() {
     const [list, names] = await Promise.all([listShoppingList(), listKnownArticleNames()]);
@@ -46,10 +47,10 @@ export default function CoursesPage() {
 
   async function handleAdd() {
     if (!name.trim()) return;
-    await addShoppingListItem(name.trim(), quantity, unit.trim() || "unite", "manual");
+    await addShoppingListItem(name.trim(), quantity, unit.trim(), "manual");
     setName("");
     setQuantity(1);
-    setUnit("unite");
+    setUnit("");
     setUseOtherName(false);
     void refresh();
   }
@@ -71,7 +72,7 @@ export default function CoursesPage() {
   }
 
   async function saveEditor(id: string) {
-    await updateShoppingListItemQuantity(id, editQuantity, editUnit.trim() || "unite");
+    await updateShoppingListItemQuantity(id, editQuantity, editUnit.trim());
     setEditingId(null);
     void refresh();
   }
@@ -87,7 +88,7 @@ export default function CoursesPage() {
             title={t("courses.checkTitle")}
           />
           <button type="button" onClick={() => openEditor(item)} className="flex-1 text-left">
-            {item.item_name} <span className="text-xs opacity-50">{item.quantity} {item.unit}</span>
+            {item.item_name} <span className="text-xs opacity-50">{item.quantity} {unitLabel(t, item.unit)}</span>
           </button>
           <button type="button" onClick={() => handleRemove(item.id)} className="text-xs opacity-50">
             ✕
@@ -255,7 +256,7 @@ export default function CoursesPage() {
                   title={t("courses.uncheckTitle")}
                 />
                 <span className="flex-1 line-through">
-                  {item.item_name} <span className="text-xs">{item.quantity} {item.unit}</span>
+                  {item.item_name} <span className="text-xs">{item.quantity} {unitLabel(t, item.unit)}</span>
                 </span>
                 <button type="button" onClick={() => handleRemove(item.id)} className="text-xs">
                   ✕
