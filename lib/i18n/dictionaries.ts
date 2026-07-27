@@ -167,6 +167,14 @@ const fr: Dict = {
   "budget.wasteAvoidedRule": "Compte les produits consommés dans les 2 jours avant leur date de péremption (gaspillage évité de justesse).",
   "budget.missingPriceHint": "{count} produit(s) concerné(s) mais sans prix renseigné, donc non comptabilisé(s) ici.",
 
+  "offline.title": "Vous êtes hors ligne",
+  "offline.message": "Impossible de joindre le serveur pour le moment. Vérifiez votre connexion.",
+  "offline.dataStillAvailable": "Les données déjà chargées (stock, courses, avis) restent disponibles dans l'app une fois reconnecté à cette page.",
+  "offline.retry": "Réessayer",
+
+  "sw.updateAvailable": "Une nouvelle version est disponible",
+  "sw.updateButton": "Mettre à jour",
+
   "foyer.title": "Mon foyer",
   "foyer.localModePrefix": "Backend non connecté : vous utilisez un foyer local à cet appareil (id",
   "foyer.localModeMiddle": "). Le partage avec d'autres membres du foyer nécessite de",
@@ -446,6 +454,14 @@ const en: Dict = {
   "budget.detailEmpty": "No priced product for this category.",
   "budget.wasteAvoidedRule": "Counts products consumed within 2 days of their expiry date (waste avoided just in time).",
   "budget.missingPriceHint": "{count} product(s) qualify but have no price set, so they aren't counted here.",
+
+  "offline.title": "You're offline",
+  "offline.message": "Can't reach the server right now. Check your connection.",
+  "offline.dataStillAvailable": "Data already loaded (stock, shopping list, feedback) stays available in the app once this page is back online.",
+  "offline.retry": "Retry",
+
+  "sw.updateAvailable": "A new version is available",
+  "sw.updateButton": "Update",
 
   "foyer.title": "My household",
   "foyer.localModePrefix": "Backend not connected: you're using a household local to this device (id",

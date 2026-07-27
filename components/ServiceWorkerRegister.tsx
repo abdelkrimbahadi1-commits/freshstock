@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useLocale } from "@/components/LocaleProvider";
 import { getMyHousehold } from "@/lib/household";
 import { registerSyncListeners } from "@/lib/offlineSync";
 import { getHouseholdId } from "@/lib/session";
@@ -26,10 +27,17 @@ async function triggerPullIfSignedIn() {
 }
 
 export default function ServiceWorkerRegister() {
+  const { t } = useLocale();
+  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  // Vrai uniquement après un clic explicite sur "Mettre à jour" (voir
+  // applyUpdate). Nécessaire car "controllerchange" se déclenche aussi
+  // lors de la toute première activation d'un onglet jamais encore
+  // contrôlé (clients.claim() le fait passer de "sans controller" à "avec
+  // controller") — sans ce garde-fou, la page rechargerait à tort dès la
+  // première visite, avant même que l'utilisateur n'ait rien demandé.
+  const updateRequestedRef = useRef(false);
+
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-    }
     registerSyncListeners();
     void triggerPullIfSignedIn();
 
@@ -44,11 +52,72 @@ export default function ServiceWorkerRegister() {
         if (event === "SIGNED_IN") void triggerPullIfSignedIn();
       }) ?? { data: null };
 
+    if ("serviceWorker" in navigator) {
+      // Garde-fou : un seul rechargement même si "controllerchange" se
+      // déclenche plusieurs fois, ET seulement si CET onglet a lui-même
+      // demandé la mise à jour (voir updateRequestedRef ci-dessus).
+      let hasReloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!updateRequestedRef.current || hasReloaded) return;
+        hasReloaded = true;
+        window.location.reload();
+      });
+
+      navigator.serviceWorker
+        .register("/sw.js", { type: "module" })
+        .then((registration) => {
+          // Un worker est déjà en attente au moment de l'enregistrement
+          // (ex. onglet resté ouvert depuis avant un déploiement) : ce
+          // n'est possible que si un autre a déjà pris le contrôle par le
+          // passé, donc jamais lors de la toute première installation.
+          if (registration.waiting && navigator.serviceWorker.controller) {
+            setWaitingWorker(registration.waiting);
+          }
+
+          registration.addEventListener("updatefound", () => {
+            const installing = registration.installing;
+            if (!installing) return;
+            installing.addEventListener("statechange", () => {
+              // "installed" + un controller déjà actif = une mise à jour
+              // vient de finir de s'installer et attend (pas d'appel à
+              // self.skipWaiting() côté SW, voir public/sw.js). Sans
+              // controller préexistant, c'est la 1re installation : pas de
+              // notification à afficher, l'activation se fait normalement.
+              if (installing.state === "installed" && navigator.serviceWorker.controller) {
+                setWaitingWorker(installing);
+              }
+            });
+          });
+        })
+        .catch(() => undefined);
+    }
+
     return () => {
       window.removeEventListener("online", handleOnline);
       subscription?.subscription.unsubscribe();
     };
   }, []);
 
-  return null;
+  function applyUpdate() {
+    updateRequestedRef.current = true;
+    waitingWorker?.postMessage({ type: "SKIP_WAITING" });
+    // Masque la bannière tout de suite ; le rechargement suit dès que
+    // "controllerchange" se déclenche (voir l'effet ci-dessus).
+    setWaitingWorker(null);
+  }
+
+  if (!waitingWorker) return null;
+
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] px-4 py-2 text-sm">
+      <span>{t("sw.updateAvailable")}</span>
+      <button
+        type="button"
+        onClick={applyUpdate}
+        className="rounded-lg bg-black/15 px-3 py-1.5 text-xs font-medium"
+      >
+        {t("sw.updateButton")}
+      </button>
+    </div>
+  );
 }
