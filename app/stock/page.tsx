@@ -1,18 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AddStockItemForm from "@/components/AddStockItemForm";
 import BackButton from "@/components/BackButton";
 import ExpiryDatePicker from "@/components/ExpiryDatePicker";
 import { useLocale } from "@/components/LocaleProvider";
 import ScanProduct, { type ResolvedProduct } from "@/components/ScanProduct";
 import { unitLabel } from "@/lib/i18n/dictionaries";
-import { suggestMenus } from "@/lib/menuEngine";
+import { QUICK_RECIPE_MAX_MINUTES, suggestMenusForExpiringStock } from "@/lib/menuEngine";
 import { listRecentMealHistory } from "@/lib/mealHistory";
 import { externalRecipeLinks } from "@/lib/recipeLinks";
 import { daysUntilExpiry, listActiveStock, setStockItemStatus, updateExpiryDate } from "@/lib/stock";
-import type { MenuSuggestion, StockItem, StockLocation } from "@/lib/types";
+import type { MealHistoryEntry, StockItem, StockLocation } from "@/lib/types";
 
 const LOCATION_ORDER: StockLocation[] = ["frigo", "congelateur", "placard", "autre"];
 
@@ -37,9 +37,8 @@ export default function StockPage() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [editingExpiryId, setEditingExpiryId] = useState<string | null>(null);
   const [pendingExpiryDate, setPendingExpiryDate] = useState("");
-  const [recipeSuggestions, setRecipeSuggestions] = useState<MenuSuggestion[] | null>(null);
-  const [suggestionsDeclined, setSuggestionsDeclined] = useState(false);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [mealHistory, setMealHistory] = useState<MealHistoryEntry[]>([]);
+  const [showRecipeSuggestions, setShowRecipeSuggestions] = useState(false);
 
   function expiryLabel(days: number): string {
     if (days < 0) return t("stock.expiredSince", { days: Math.abs(days) });
@@ -49,7 +48,9 @@ export default function StockPage() {
   }
 
   async function refresh() {
-    setItems(await listActiveStock());
+    const [stockItems, history] = await Promise.all([listActiveStock(), listRecentMealHistory()]);
+    setItems(stockItems);
+    setMealHistory(history);
     setLoading(false);
   }
 
@@ -67,16 +68,6 @@ export default function StockPage() {
   function snoozeBanner() {
     localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_HOURS * 3600_000));
     setBannerDismissed(true);
-  }
-
-  async function showRecipeSuggestions() {
-    setLoadingSuggestions(true);
-    const history = await listRecentMealHistory();
-    const suggestions = suggestMenus(items, history, [], locale).filter(
-      (s) => s.matchedExpiringItems.length > 0
-    );
-    setRecipeSuggestions(suggestions);
-    setLoadingSuggestions(false);
   }
 
   function openExpiryEditor(item: StockItem) {
@@ -100,6 +91,17 @@ export default function StockPage() {
   })).filter((g) => g.items.length > 0);
 
   const expiringSoonItems = items.filter((i) => daysUntilExpiry(i.expiry_date) <= EXPIRY_WARNING_DAYS);
+
+  const expiringRecipeSuggestions = useMemo(
+    () => suggestMenusForExpiringStock(items, mealHistory, locale),
+    [items, mealHistory, locale]
+  );
+  const quickRecipeSuggestions = expiringRecipeSuggestions.filter(
+    (s) => s.recipe.prep_time_minutes <= QUICK_RECIPE_MAX_MINUTES
+  );
+  const otherRecipeSuggestions = expiringRecipeSuggestions.filter(
+    (s) => s.recipe.prep_time_minutes > QUICK_RECIPE_MAX_MINUTES
+  );
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-6">
@@ -173,95 +175,97 @@ export default function StockPage() {
                 </button>
               </div>
 
-              {!suggestionsDeclined && recipeSuggestions === null && (
-                <div className="border-t border-amber-300/60 dark:border-amber-800/60 pt-2 space-y-2">
-                  <p className="text-sm">{t("stock.wantRecipeSuggestions")}</p>
-                  <div className="flex gap-2">
+              <div className="pt-1 border-t border-amber-800/15 dark:border-amber-300/15 space-y-2">
+                <p className="text-sm">{t("stock.wantRecipesQuestion")}</p>
+                {!showRecipeSuggestions ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowRecipeSuggestions(true)}
+                    className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-3 py-1.5 text-sm"
+                  >
+                    {t("stock.showRecipes")}
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    {expiringRecipeSuggestions.length === 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-sm opacity-70">{t("stock.noRecipeMatch")}</p>
+                        {expiringSoonItems.map((item) => (
+                          <div key={item.id}>
+                            <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                              {t("stock.recipeIdeasFor", { name: item.name })}
+                            </p>
+                            <ul className="flex flex-wrap gap-x-3 gap-y-1">
+                              {externalRecipeLinks(item.name).map((link) => (
+                                <li key={link.label}>
+                                  <a
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm underline text-accent"
+                                  >
+                                    {link.label} →
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        {quickRecipeSuggestions.length > 0 && (
+                          <div className="space-y-1">
+                            <h3 className="text-xs font-medium opacity-80">
+                              {t("stock.quickRecipesTitle")}
+                            </h3>
+                            <ul className="space-y-1">
+                              {quickRecipeSuggestions.map((s) => (
+                                <li key={s.recipe.id}>
+                                  <Link
+                                    href={`/menus?recipe=${s.recipe.id}`}
+                                    className="text-sm underline text-accent"
+                                  >
+                                    {t(`recipe.${s.recipe.id}.name`)} —{" "}
+                                    {t("menus.prepTime", { minutes: s.recipe.prep_time_minutes })}
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {otherRecipeSuggestions.length > 0 && (
+                          <div className="space-y-1">
+                            <h3 className="text-xs font-medium opacity-80">
+                              {t("stock.otherRecipesTitle")}
+                            </h3>
+                            <ul className="space-y-1">
+                              {otherRecipeSuggestions.map((s) => (
+                                <li key={s.recipe.id}>
+                                  <Link
+                                    href={`/menus?recipe=${s.recipe.id}`}
+                                    className="text-sm underline text-accent"
+                                  >
+                                    {t(`recipe.${s.recipe.id}.name`)} —{" "}
+                                    {t("menus.prepTime", { minutes: s.recipe.prep_time_minutes })}
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </>
+                    )}
                     <button
                       type="button"
-                      onClick={showRecipeSuggestions}
-                      disabled={loadingSuggestions}
-                      className="rounded-lg bg-accent text-accent-foreground shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-3 py-1.5 text-xs disabled:opacity-40"
+                      onClick={() => setShowRecipeSuggestions(false)}
+                      className="text-xs underline opacity-70"
                     >
-                      {loadingSuggestions ? "…" : t("stock.yesShowRecipes")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSuggestionsDeclined(true)}
-                      className="text-xs underline"
-                    >
-                      {t("stock.noThanks")}
+                      {t("stock.hideRecipes")}
                     </button>
                   </div>
-                </div>
-              )}
-
-              {recipeSuggestions !== null &&
-                (() => {
-                  const quick = recipeSuggestions.filter((s) => s.recipe.tags.includes("rapide"));
-                  const other = recipeSuggestions.filter((s) => !s.recipe.tags.includes("rapide"));
-                  function recipeRow(s: MenuSuggestion) {
-                    return (
-                      <li key={s.recipe.id}>
-                        <Link href="/menus" className="text-sm underline text-accent">
-                          {t(`recipe.${s.recipe.id}.name`)}
-                        </Link>{" "}
-                        <span className="text-xs opacity-60">
-                          {t("menus.prepTime", { minutes: s.recipe.prep_time_minutes })}
-                        </span>
-                      </li>
-                    );
-                  }
-                  return (
-                    <div className="border-t border-amber-300/60 dark:border-amber-800/60 pt-2 space-y-3">
-                      {recipeSuggestions.length === 0 ? (
-                        <div className="space-y-2">
-                          <p className="text-xs opacity-70">{t("stock.noRecipeMatch")}</p>
-                          {expiringSoonItems.map((item) => (
-                            <div key={item.id}>
-                              <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
-                                {t("stock.recipeIdeasFor", { name: item.name })}
-                              </p>
-                              <ul className="flex flex-wrap gap-x-3 gap-y-1">
-                                {externalRecipeLinks(item.name).map((link) => (
-                                  <li key={link.label}>
-                                    <a
-                                      href={link.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-sm underline text-accent"
-                                    >
-                                      {link.label} →
-                                    </a>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <>
-                          {quick.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
-                                {t("stock.quickRecipes")}
-                              </p>
-                              <ul className="space-y-1">{quick.map(recipeRow)}</ul>
-                            </div>
-                          )}
-                          {other.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
-                                {t("stock.otherRecipes")}
-                              </p>
-                              <ul className="space-y-1">{other.map(recipeRow)}</ul>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  );
-                })()}
+                )}
+              </div>
             </div>
           )}
           {loading && <p className="text-sm opacity-60">{t("common.loading")}</p>}

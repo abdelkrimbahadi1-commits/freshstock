@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import BackButton from "@/components/BackButton";
 import { useLocale } from "@/components/LocaleProvider";
 import { unitLabel } from "@/lib/i18n/dictionaries";
-import { allTags, detectNutritionGap, detectRepetitionWarning, suggestMenus } from "@/lib/menuEngine";
+import {
+  allTags,
+  detectNutritionGap,
+  detectRepetitionWarning,
+  suggestMenus,
+  suggestMenusForExpiringStock,
+} from "@/lib/menuEngine";
 import { cookMenu, listRecentMealHistory } from "@/lib/mealHistory";
 import { externalRecipeLinks } from "@/lib/recipeLinks";
 import { addMissingIngredients } from "@/lib/shoppingList";
@@ -14,8 +21,10 @@ import type { MealHistoryEntry, MenuSuggestion, ReasonToken, RecipeIngredient, S
 
 const BASE_SERVINGS = 4;
 
-export default function MenusPage() {
+function MenusPageContent() {
   const { t, locale } = useLocale();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [stock, setStock] = useState<StockItem[]>([]);
   const [history, setHistory] = useState<MealHistoryEntry[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -41,8 +50,23 @@ export default function MenusPage() {
     () => suggestMenus(stock, history, selectedTags, locale),
     [stock, history, selectedTags, locale]
   );
+  // Recettes ciblant les produits bientôt périmés, non tronquées au top 5 :
+  // sert de filet pour ouvrir un lien profond depuis /stock même si la
+  // recette n'apparaît pas dans le top 5 habituel de `suggestions`.
+  const expiringStockSuggestions = useMemo(
+    () => suggestMenusForExpiringStock(stock, history, locale),
+    [stock, history, locale]
+  );
   const repetitionWarning = useMemo(() => detectRepetitionWarning(history), [history]);
   const nutritionGapWarning = useMemo(() => detectNutritionGap(history), [history]);
+
+  useEffect(() => {
+    const recipeParam = searchParams.get("recipe");
+    if (recipeParam && !loading) {
+      setDetailId(recipeParam);
+      setPeopleCount(BASE_SERVINGS);
+    }
+  }, [searchParams, loading]);
 
   function formatReason(token: ReasonToken): string {
     return t(token.key, token.params);
@@ -112,14 +136,25 @@ export default function MenusPage() {
     }
   }
 
-  const detailSuggestion = suggestions.find((s) => s.recipe.id === detailId) ?? null;
+  function closeDetail() {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("recipe");
+    const nextQuery = nextParams.toString();
+    router.replace(nextQuery ? `/menus?${nextQuery}` : "/menus", { scroll: false });
+    setDetailId(null);
+  }
+
+  const detailSuggestion =
+    suggestions.find((s) => s.recipe.id === detailId) ??
+    expiringStockSuggestions.find((s) => s.recipe.id === detailId) ??
+    null;
   const isDetailChecked = detailSuggestion ? checkedRecipeIds.has(detailSuggestion.recipe.id) : false;
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-6">
       {detailSuggestion ? (
         <>
-          <BackButton onClick={() => setDetailId(null)} />
+          <BackButton onClick={closeDetail} />
           <div className="space-y-4">
             <h1 className="text-xl font-semibold">{t(`recipe.${detailSuggestion.recipe.id}.name`)}</h1>
             <p className="text-sm opacity-70">
@@ -212,7 +247,7 @@ export default function MenusPage() {
                 type="button"
                 onClick={() => handleCook(detailSuggestion)}
                 disabled={cookedId === detailSuggestion.recipe.id}
-                className="rounded-lg border-2 border-emerald-600 text-emerald-700 dark:text-emerald-400 shadow-[0_2px_0_rgba(0,0,0,0.15)] active:shadow-none active:translate-y-[1px] px-4 py-2 text-sm font-medium disabled:opacity-40"
+                className="w-full rounded-lg bg-emerald-600 text-white shadow-[0_2px_0_rgba(0,0,0,0.25)] active:shadow-none active:translate-y-[1px] px-4 py-3 text-base font-medium disabled:opacity-40"
               >
                 {cookedId === detailSuggestion.recipe.id ? "…" : t("menus.finishCooking")}
               </button>
@@ -321,5 +356,13 @@ export default function MenusPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function MenusPage() {
+  return (
+    <Suspense fallback={null}>
+      <MenusPageContent />
+    </Suspense>
   );
 }

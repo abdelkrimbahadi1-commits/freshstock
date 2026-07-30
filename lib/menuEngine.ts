@@ -16,6 +16,7 @@ const REPETITION_WINDOW_DAYS = 7;
 const NUTRITION_GAP_WINDOW_DAYS = 3;
 const REPETITION_PENALTY_PER_USE = 3;
 const NUTRITION_GAP_BONUS = 2;
+export const QUICK_RECIPE_MAX_MINUTES = 20;
 
 function normalize(s: string): string {
   return s.toLowerCase().trim();
@@ -47,7 +48,7 @@ function isWithinDays(dateIso: string, days: number): boolean {
 // ingrédients au moment du matching contre le stock (texte libre saisi par
 // l'utilisateur) — les raisons renvoyées restent des tokens structurés
 // ({key, params}) formatés par l'UI via t(), pas des phrases figées.
-export function suggestMenus(
+function buildSuggestions(
   stock: StockItem[],
   mealHistory: MealHistoryEntry[],
   desiredTags: string[],
@@ -125,7 +126,29 @@ export function suggestMenus(
     return { recipe, score, matchedExpiringItems, missingIngredients, reasons };
   });
 
-  return suggestions.sort((a, b) => b.score - a.score).slice(0, 5);
+  return suggestions.sort((a, b) => b.score - a.score);
+}
+
+export function suggestMenus(
+  stock: StockItem[],
+  mealHistory: MealHistoryEntry[],
+  desiredTags: string[],
+  locale: Locale
+): MenuSuggestion[] {
+  return buildSuggestions(stock, mealHistory, desiredTags, locale).slice(0, 5);
+}
+
+// Utilisée par l'avertissement de péremption du stock pour proposer des
+// recettes qui consomment spécifiquement les produits bientôt périmés,
+// indépendamment du top 5 habituel de `suggestMenus`.
+export function suggestMenusForExpiringStock(
+  stock: StockItem[],
+  mealHistory: MealHistoryEntry[],
+  locale: Locale
+): MenuSuggestion[] {
+  return buildSuggestions(stock, mealHistory, [], locale).filter(
+    (s) => s.matchedExpiringItems.length > 0
+  );
 }
 
 // Détecte si un tag/protéine domine trop les repas récents, pour l'alerte
