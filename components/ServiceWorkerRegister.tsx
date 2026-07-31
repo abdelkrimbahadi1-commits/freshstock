@@ -44,7 +44,17 @@ export default function ServiceWorkerRegister() {
       });
 
       navigator.serviceWorker
-        .register("/sw.js", { type: "module" })
+        // Registration CLASSIQUE volontaire (surtout PAS `{ type: "module" }`).
+        // C'est le seul type partagé par TOUT le parc : les installations
+        // antérieures au LOT 5 ont enregistré /sw.js en classique, et une
+        // registration classique ne peut pas installer un worker module (les
+        // `import` de premier niveau sont un SyntaxError en contexte script).
+        // Ces appareils restaient donc figés sur leur ancien worker, sans
+        // jamais pouvoir charger le code récent qui affiche la bannière de
+        // mise à jour — boucle fermée. Ré-introduire `{ type: "module" }`
+        // re-scinderait le parc en deux et recréerait l'incident : voir
+        // l'encadré en tête de public/sw.js, qui doit rester sans import.
+        .register("/sw.js")
         .then((registration) => {
           // Un worker est déjà en attente au moment de l'enregistrement
           // (ex. onglet resté ouvert depuis avant un déploiement) : ce
