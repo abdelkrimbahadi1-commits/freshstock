@@ -18,6 +18,26 @@ const SOURCE = readFileSync(SW_PATH, "utf8");
 const SELF_ORIGIN = "https://freshstock-one.vercel.app";
 const SUPABASE_ORIGIN = "https://uzqlmxdtzrnjjznlxdeb.supabase.co";
 
+// Signatures des fonctions pures de sw.js, telles que lues dans le bac à sable.
+type ClassifyFn = (
+  request: { url: string; method: string; mode?: string },
+  selfOrigin: string,
+  supabaseOrigin: string | null
+) => string;
+type IsCacheableFn = (response: { ok: boolean; type: string } | null | undefined) => boolean;
+type ResolveNavigationFn = (
+  request: { url: string },
+  deps: {
+    fetch: (request: { url: string }) => Promise<unknown>;
+    openCache: () => Promise<{ match: (key: string) => Promise<unknown> }>;
+  }
+) => Promise<unknown>;
+type GetStaleCacheNamesFn = (
+  existingCacheNames: string[],
+  currentCacheName: string,
+  prefix: string
+) => string[];
+
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
@@ -201,7 +221,7 @@ describe("cycle de vie du worker", () => {
 describe("10. règles network-only critiques", () => {
   it("Supabase, /api/* et les requêtes non-GET ne sont jamais mis en cache", () => {
     const { read } = loadServiceWorker();
-    const classify = read<(r: unknown, o: string, s: string | null) => string>("classifyRequest");
+    const classify = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
 
     const cases: [string, Partial<{ method: string; mode: string }>, string | null][] = [
@@ -231,7 +251,7 @@ describe("10. règles network-only critiques", () => {
 describe("classifyRequest", () => {
   it("1. Supabase est toujours exclu du cache (origine injectée)", () => {
     const { read } = loadServiceWorker();
-    const classifyRequest = read<Function>("classifyRequest");
+    const classifyRequest = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
     const url = `${SUPABASE_ORIGIN}/rest/v1/stock_items?household_id=eq.abc`;
     expect(classifyRequest(req(url), SELF_ORIGIN, SUPABASE_ORIGIN)).toBe(STRATEGY.NETWORK_ONLY);
@@ -239,7 +259,7 @@ describe("classifyRequest", () => {
 
   it("1bis. Supabase est exclu même sans origine injectée (repli sur le suffixe *.supabase.co)", () => {
     const { read } = loadServiceWorker();
-    const classifyRequest = read<Function>("classifyRequest");
+    const classifyRequest = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
     const url = `${SUPABASE_ORIGIN}/rest/v1/stock_items`;
     expect(classifyRequest(req(url), SELF_ORIGIN, null)).toBe(STRATEGY.NETWORK_ONLY);
@@ -247,7 +267,7 @@ describe("classifyRequest", () => {
 
   it("2. une requête POST n'est jamais mise en cache, même vers une origine autrement cacheable", () => {
     const { read } = loadServiceWorker();
-    const classifyRequest = read<Function>("classifyRequest");
+    const classifyRequest = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
     const url = `${SELF_ORIGIN}/_next/static/chunks/app.js`;
     expect(classifyRequest(req(url, { method: "POST" }), SELF_ORIGIN, SUPABASE_ORIGIN)).toBe(
@@ -257,7 +277,7 @@ describe("classifyRequest", () => {
 
   it("3. les routes /api/* ne sont jamais mises en cache", () => {
     const { read } = loadServiceWorker();
-    const classifyRequest = read<Function>("classifyRequest");
+    const classifyRequest = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
     const url = `${SELF_ORIGIN}/api/whatever`;
     expect(classifyRequest(req(url), SELF_ORIGIN, SUPABASE_ORIGIN)).toBe(STRATEGY.NETWORK_ONLY);
@@ -265,7 +285,7 @@ describe("classifyRequest", () => {
 
   it("4. /_next/static utilise la stratégie cache-first prévue", () => {
     const { read } = loadServiceWorker();
-    const classifyRequest = read<Function>("classifyRequest");
+    const classifyRequest = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
     const url = `${SELF_ORIGIN}/_next/static/chunks/app.js`;
     expect(classifyRequest(req(url), SELF_ORIGIN, SUPABASE_ORIGIN)).toBe(
@@ -275,7 +295,7 @@ describe("classifyRequest", () => {
 
   it("une navigation vers une route applicative est classée network-first (jamais mise en cache HTML)", () => {
     const { read } = loadServiceWorker();
-    const classifyRequest = read<Function>("classifyRequest");
+    const classifyRequest = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
     const url = `${SELF_ORIGIN}/stock`;
     expect(classifyRequest(req(url, { mode: "navigate" }), SELF_ORIGIN, SUPABASE_ORIGIN)).toBe(
@@ -285,7 +305,7 @@ describe("classifyRequest", () => {
 
   it("9. les URLs contenant des paramètres sensibles sont exclues, même en même origine", () => {
     const { read } = loadServiceWorker();
-    const classifyRequest = read<Function>("classifyRequest");
+    const classifyRequest = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
     const url = `${SELF_ORIGIN}/foyer?code=abc123`;
     expect(classifyRequest(req(url, { mode: "navigate" }), SELF_ORIGIN, SUPABASE_ORIGIN)).toBe(
@@ -295,7 +315,7 @@ describe("classifyRequest", () => {
 
   it("une ressource publique de l'allowlist (precache) est cache-first", () => {
     const { read } = loadServiceWorker();
-    const classifyRequest = read<Function>("classifyRequest");
+    const classifyRequest = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
     for (const url of read<string[]>("PRECACHE_URLS")) {
       expect(classifyRequest(req(`${SELF_ORIGIN}${url}`), SELF_ORIGIN, SUPABASE_ORIGIN)).toBe(
@@ -306,7 +326,7 @@ describe("classifyRequest", () => {
 
   it("une requête inconnue (même origine, ni statique ni allowlistée) n'est jamais mise en cache automatiquement", () => {
     const { read } = loadServiceWorker();
-    const classifyRequest = read<Function>("classifyRequest");
+    const classifyRequest = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
     const url = `${SELF_ORIGIN}/some/unknown/path`;
     expect(classifyRequest(req(url), SELF_ORIGIN, SUPABASE_ORIGIN)).toBe(
@@ -316,7 +336,7 @@ describe("classifyRequest", () => {
 
   it("une origine étrangère non listée est toujours network-only (pas de cache global GET)", () => {
     const { read } = loadServiceWorker();
-    const classifyRequest = read<Function>("classifyRequest");
+    const classifyRequest = read<ClassifyFn>("classifyRequest");
     const STRATEGY = read<Record<string, string>>("STRATEGY");
     const url = "https://images.example.com/photo.jpg";
     expect(classifyRequest(req(url), SELF_ORIGIN, SUPABASE_ORIGIN)).toBe(STRATEGY.NETWORK_ONLY);
@@ -325,25 +345,25 @@ describe("classifyRequest", () => {
 
 describe("isCacheableResponse", () => {
   it("8. une réponse non réussie n'est pas ajoutée au cache", () => {
-    const isCacheableResponse = loadServiceWorker().read<Function>("isCacheableResponse");
+    const isCacheableResponse = loadServiceWorker().read<IsCacheableFn>("isCacheableResponse");
     expect(isCacheableResponse({ ok: false, type: "basic" })).toBe(false);
   });
 
   it("8bis. une réponse opaque n'est pas ajoutée au cache sans justification", () => {
-    const isCacheableResponse = loadServiceWorker().read<Function>("isCacheableResponse");
+    const isCacheableResponse = loadServiceWorker().read<IsCacheableFn>("isCacheableResponse");
     expect(isCacheableResponse({ ok: true, type: "opaque" })).toBe(false);
     expect(isCacheableResponse({ ok: true, type: "opaqueredirect" })).toBe(false);
   });
 
   it("une réponse basic réussie est cacheable", () => {
-    const isCacheableResponse = loadServiceWorker().read<Function>("isCacheableResponse");
+    const isCacheableResponse = loadServiceWorker().read<IsCacheableFn>("isCacheableResponse");
     expect(isCacheableResponse({ ok: true, type: "basic" })).toBe(true);
   });
 });
 
 describe("resolveNavigation (5. navigation hors ligne)", () => {
   it("retourne uniquement /offline en cas d'échec réseau réel, jamais / ni une autre page en cache", async () => {
-    const resolveNavigation = loadServiceWorker().read<Function>("resolveNavigation");
+    const resolveNavigation = loadServiceWorker().read<ResolveNavigationFn>("resolveNavigation");
     const fakeOfflineResponse = { ok: true, url: "/offline" };
     const fakeRootResponse = { ok: true, url: "/" };
     const cache = {
@@ -369,7 +389,7 @@ describe("resolveNavigation (5. navigation hors ligne)", () => {
   });
 
   it("retourne la réponse réseau normalement quand le réseau fonctionne (pas de secours)", async () => {
-    const resolveNavigation = loadServiceWorker().read<Function>("resolveNavigation");
+    const resolveNavigation = loadServiceWorker().read<ResolveNavigationFn>("resolveNavigation");
     const networkResponse = { ok: true, url: "/stock" };
     const result = await resolveNavigation(
       { url: `${SELF_ORIGIN}/stock` },
@@ -386,13 +406,13 @@ describe("resolveNavigation (5. navigation hors ligne)", () => {
 
 describe("getStaleCacheNames (nettoyage à l'activation)", () => {
   it("6. un ancien cache FreshStock est supprimé à l'activation", () => {
-    const getStaleCacheNames = loadServiceWorker().read<Function>("getStaleCacheNames");
+    const getStaleCacheNames = loadServiceWorker().read<GetStaleCacheNamesFn>("getStaleCacheNames");
     const stale = getStaleCacheNames(["freshstock-v9", "freshstock-v10"], "freshstock-v10", "freshstock-v");
     expect(stale).toEqual(["freshstock-v9"]);
   });
 
   it("7. un cache étranger (autre app/préfixe) n'est pas supprimé", () => {
-    const getStaleCacheNames = loadServiceWorker().read<Function>("getStaleCacheNames");
+    const getStaleCacheNames = loadServiceWorker().read<GetStaleCacheNamesFn>("getStaleCacheNames");
     const stale = getStaleCacheNames(
       ["freshstock-v9", "freshstock-v10", "some-other-app-cache-v1"],
       "freshstock-v10",
@@ -403,7 +423,7 @@ describe("getStaleCacheNames (nettoyage à l'activation)", () => {
   });
 
   it("10. le changement de version ne mélange pas deux ensembles d'assets : seule l'ancienne version est ciblée, jamais la courante", () => {
-    const getStaleCacheNames = loadServiceWorker().read<Function>("getStaleCacheNames");
+    const getStaleCacheNames = loadServiceWorker().read<GetStaleCacheNamesFn>("getStaleCacheNames");
     const stale = getStaleCacheNames(
       ["freshstock-v10", "freshstock-v11", "freshstock-v12"],
       "freshstock-v12",
