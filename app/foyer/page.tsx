@@ -110,6 +110,16 @@ export default function FoyerPage() {
     </Link>
   );
 
+  // TEMPORAIRE — accès à /diagnostic depuis l'application. La barre d'adresse
+  // étant masquée dans l'application Android (TWA), un lien interne est le seul
+  // moyen d'atteindre cette page. À retirer avec la page de diagnostic une fois
+  // l'investigation de divergence du Stock terminée.
+  const diagnosticLink = (
+    <Link href="/diagnostic" className="block pt-4 text-xs underline opacity-40">
+      Diagnostic technique
+    </Link>
+  );
+
   if (!isSupabaseConfigured) {
     return (
       <div className="max-w-md mx-auto p-4 space-y-3">
@@ -123,6 +133,7 @@ export default function FoyerPage() {
           .
         </p>
         {feedbackLink}
+        {diagnosticLink}
       </div>
     );
   }
@@ -141,6 +152,7 @@ export default function FoyerPage() {
           {t("login.signIn")}
         </Link>
         <div>{feedbackLink}</div>
+        {diagnosticLink}
       </div>
     );
   }
@@ -196,6 +208,7 @@ export default function FoyerPage() {
 
         {error && <p className="text-sm text-red-600">{error}</p>}
         {feedbackLink}
+        {diagnosticLink}
       </div>
     );
   }
@@ -271,6 +284,7 @@ export default function FoyerPage() {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
       {feedbackLink}
+      {diagnosticLink}
     </div>
   );
 }
