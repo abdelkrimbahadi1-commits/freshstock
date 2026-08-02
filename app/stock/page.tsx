@@ -7,7 +7,7 @@ import BackButton from "@/components/BackButton";
 import ExpiryDatePicker from "@/components/ExpiryDatePicker";
 import { useLocale } from "@/components/LocaleProvider";
 import ScanProduct, { type ResolvedProduct } from "@/components/ScanProduct";
-import { unitLabel } from "@/lib/i18n/dictionaries";
+import { formatQuantity } from "@/lib/format";
 import { QUICK_RECIPE_MAX_MINUTES, suggestMenusForExpiringStock } from "@/lib/menuEngine";
 import { listRecentMealHistory } from "@/lib/mealHistory";
 import { externalRecipeLinks } from "@/lib/recipeLinks";
@@ -281,13 +281,29 @@ export default function StockPage() {
                       key={item.id}
                       className="rounded-xl border border-black/10 dark:border-white/10 p-3 space-y-2"
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{item.name}</p>
-                          <p className="text-xs opacity-60">
-                            {item.quantity} {unitLabel(t, item.unit)}
+                      <div className="flex items-start justify-between gap-3">
+                        {/* Zone principale cliquable : mène à la fiche détaillée.
+                            Les boutons d'action sont hors de ce lien, ils ne
+                            peuvent donc jamais déclencher la navigation. */}
+                        <Link
+                          href={`/stock/${item.id}`}
+                          className="min-w-0 flex-1 rounded-lg -m-1 p-1 active:bg-black/5 dark:active:bg-white/5"
+                        >
+                          {/* Le nom occupe jusqu'à DEUX lignes avant d'être coupé :
+                              `truncate` le limitait à une seule, ce qui masquait la
+                              fin des noms longs sur téléphone, où les trois boutons
+                              de droite réservent déjà une largeur importante.
+                              `break-words` évite qu'un mot très long déborde. */}
+                          <p
+                            title={item.name}
+                            className="font-medium line-clamp-2 break-words"
+                          >
+                            {item.name}
                           </p>
-                        </div>
+                          <p className="text-xs opacity-60">
+                            {formatQuantity(t, item.quantity, item.unit)}
+                          </p>
+                        </Link>
                         <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
