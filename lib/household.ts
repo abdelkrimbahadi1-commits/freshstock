@@ -5,6 +5,7 @@ import { migrateLocalDataToHousehold } from "./householdMigration";
 import { pullHouseholdData } from "./householdPull";
 import { runPostAuthRepairs } from "./postAuthRepairs";
 import { confirmRemoteHousehold, getHouseholdId } from "./session";
+import { displayNameForUser } from "./userIdentity";
 
 export interface HouseholdInfo {
   id: string;
@@ -38,6 +39,18 @@ export async function triggerPullIfSignedIn(): Promise<void> {
 
   const household = await getMyHousehold();
   if (household) await pullHouseholdData({ householdId: getHouseholdId(), authenticatedUserId: user.id });
+}
+
+// Libellé du compte connecté, destiné à l'affichage. Lecture seule de la
+// session : aucune requête, aucune RPC, aucune donnée d'un autre membre.
+// Retourne null quand personne n'est connecté.
+export async function getSignedInDisplayName(): Promise<string | null> {
+  const supabase = createClient();
+  if (!supabase) return null;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user ? displayNameForUser(user) : null;
 }
 
 export async function isSignedIn(): Promise<boolean> {

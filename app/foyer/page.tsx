@@ -7,6 +7,7 @@ import {
   approveJoinRequest,
   createHousehold,
   getMyHousehold,
+  getSignedInDisplayName,
   isSignedIn,
   listPendingJoinRequests,
   redeemApprovalCode,
@@ -22,6 +23,7 @@ export default function FoyerPage() {
   const { t } = useLocale();
   const [household, setHousehold] = useState<HouseholdInfo | null>(null);
   const [signedIn, setSignedIn] = useState(false);
+  const [signedInAs, setSignedInAs] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [requestCode, setRequestCode] = useState("");
@@ -40,10 +42,11 @@ export default function FoyerPage() {
   }
 
   useEffect(() => {
-    void Promise.all([isSignedIn(), getMyHousehold()])
-      .then(([signed, h]) => {
+    void Promise.all([isSignedIn(), getMyHousehold(), getSignedInDisplayName()])
+      .then(([signed, h, nom]) => {
         setSignedIn(signed);
         setHousehold(h);
+        setSignedInAs(nom);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -110,6 +113,15 @@ export default function FoyerPage() {
     </Link>
   );
 
+  // Identité du compte CONNECTÉ, et de lui seul. Aucune donnée d'un autre
+  // membre du foyer n'est affichée ici (voir lib/userIdentity.ts).
+  const identiteBlock = signedInAs && (
+    <div className="rounded-xl border border-black/10 dark:border-white/10 px-3 py-2">
+      <p className="text-xs opacity-60">{t("foyer.signedInAs")}</p>
+      <p className="text-sm font-medium break-words">{signedInAs}</p>
+    </div>
+  );
+
   // TEMPORAIRE — accès à /diagnostic depuis l'application. La barre d'adresse
   // étant masquée dans l'application Android (TWA), un lien interne est le seul
   // moyen d'atteindre cette page. À retirer avec la page de diagnostic une fois
@@ -164,6 +176,7 @@ export default function FoyerPage() {
         <p className="text-sm">
           {t("foyer.memberOf")} <strong>{household.name}</strong>.
         </p>
+        {identiteBlock}
         <p className="text-sm opacity-70">
           {t("foyer.inviteCode")} <span className="font-mono text-base">{household.join_code}</span>
         </p>
@@ -216,6 +229,10 @@ export default function FoyerPage() {
   return (
     <div className="max-w-md mx-auto p-4 space-y-6">
       <h1 className="text-xl font-semibold">{t("foyer.title")}</h1>
+      {/* Même bloc pour un compte connecté sans foyer : la question « qui
+          suis-je » se pose autant, sinon plus, avant d'en créer ou d'en
+          rejoindre un. */}
+      {identiteBlock}
 
       <div className="space-y-2">
         <h2 className="text-sm font-medium">{t("foyer.createHousehold")}</h2>
