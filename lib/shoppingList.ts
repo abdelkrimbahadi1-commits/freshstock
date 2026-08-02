@@ -1,6 +1,7 @@
 "use client";
 
 import { db } from "./db";
+import { localDayIso } from "./format";
 import { translate } from "./i18n/dictionaries";
 import type { Locale } from "./i18n/locale";
 import { queueWrite } from "./offlineSync";
@@ -59,6 +60,7 @@ export async function addShoppingListItem(
     return;
   }
 
+  const maintenant = new Date().toISOString();
   const entry: ShoppingListItem = {
     id: crypto.randomUUID(),
     household_id: householdId,
@@ -68,7 +70,12 @@ export async function addShoppingListItem(
     source,
     recipe_name: recipeName,
     checked: false,
-    updated_at: new Date().toISOString(),
+    // Posé ICI et nulle part ailleurs. Aucune des mutations suivantes
+    // (coche/décoche, changement de quantité, ajout d'une recette à un article
+    // déjà présent) ne le réécrit : elles passent toutes par `update()` sur des
+    // champs nommés, ou par un spread qui le préserve.
+    created_at: maintenant,
+    updated_at: maintenant,
   };
   await db.shopping_list.put(entry);
   await queueWrite("shopping_list", "upsert", entry as unknown as Record<string, unknown>);
@@ -109,4 +116,47 @@ export async function updateShoppingListItemQuantity(
 export async function removeShoppingListItem(id: string): Promise<void> {
   await db.shopping_list.delete(id);
   await queueWrite("shopping_list", "delete", { id });
+}
+
+// Date de référence d'un article de la liste. Repli TEMPORAIRE sur `updated_at`
+// pour les lignes locales créées avant l'existence de `created_at` : elles se
+// réaligneront d'elles-mêmes au premier pull, la colonne étant désormais
+// présente et rétro-remplie côté Supabase.
+export function shoppingItemDate(item: ShoppingListItem): string {
+  return item.created_at ?? item.updated_at;
+}
+
+export type DayGroupKey = "today" | "yesterday" | "older";
+
+export interface ShoppingListDayGroup {
+  key: DayGroupKey;
+  dayIso: string; // jour calendaire LOCAL, "YYYY-MM-DD"
+  items: ShoppingListItem[];
+}
+
+// Regroupe par journée calendaire locale et trie du plus récent au plus ancien,
+// groupes comme articles. Fonction PURE : `now` est injecté pour rester
+// testable au changement de mois et d'année.
+export function groupShoppingListByDay(
+  items: ShoppingListItem[],
+  now: Date = new Date()
+): ShoppingListDayGroup[] {
+  const aujourdHui = localDayIso(now);
+  const veille = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const hier = localDayIso(veille);
+
+  const parJour = new Map<string, ShoppingListItem[]>();
+  for (const item of items) {
+    const jour = localDayIso(shoppingItemDate(item));
+    if (!jour) continue;
+    const groupe = parJour.get(jour) ?? [];
+    groupe.push(item);
+    parJour.set(jour, groupe);
+  }
+
+  return Array.from(parJour, ([dayIso, groupItems]) => ({
+    key: (dayIso === aujourdHui ? "today" : dayIso === hier ? "yesterday" : "older") as DayGroupKey,
+    dayIso,
+    items: groupItems.sort((a, b) => shoppingItemDate(b).localeCompare(shoppingItemDate(a))),
+  })).sort((a, b) => b.dayIso.localeCompare(a.dayIso));
 }

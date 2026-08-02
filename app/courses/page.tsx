@@ -4,11 +4,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import BackButton from "@/components/BackButton";
 import { useLocale } from "@/components/LocaleProvider";
-import { unitLabel } from "@/lib/i18n/dictionaries";
+import { formatDate, formatQuantity } from "@/lib/format";
 import {
   addShoppingListItem,
   listKnownArticleNames,
+  groupShoppingListByDay,
   listShoppingList,
+  shoppingItemDate,
   removeShoppingListItem,
   toggleShoppingListItem,
   updateShoppingListItemQuantity,
@@ -21,7 +23,7 @@ const fieldClass =
   "rounded-lg border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-3 py-2 text-sm shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)]";
 
 export default function CoursesPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const router = useRouter();
   const [items, setItems] = useState<ShoppingListItem[]>([]);
   const [knownNames, setKnownNames] = useState<string[]>([]);
@@ -87,8 +89,11 @@ export default function CoursesPage() {
             onChange={(e) => handleToggle(item.id, e.target.checked)}
             title={t("courses.checkTitle")}
           />
-          <button type="button" onClick={() => openEditor(item)} className="flex-1 text-left">
-            {item.item_name} <span className="text-xs opacity-50">{item.quantity} {unitLabel(t, item.unit)}</span>
+          <button type="button" onClick={() => openEditor(item)} className="flex-1 text-left min-w-0">
+            <span className="break-words">
+              {item.item_name} <span className="text-xs opacity-50">{formatQuantity(t, item.quantity, item.unit)}</span>
+            </span>
+            <span className="block text-xs opacity-40">{formatDate(shoppingItemDate(item), locale)}</span>
           </button>
           <button type="button" onClick={() => handleRemove(item.id)} className="text-xs opacity-50">
             ✕
@@ -234,9 +239,23 @@ export default function CoursesPage() {
       )}
 
       {uncheckedManual.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <h2 className="text-sm font-medium opacity-70">{t("courses.periodPurchases")}</h2>
-          <ul className="space-y-2">{uncheckedManual.map(renderItem)}</ul>
+          {/* Regroupement par journée, du plus récent au plus ancien.
+              « Aujourd'hui » et « Hier » sont nommés ; au-delà, la date
+              complète est affichée. */}
+          {groupShoppingListByDay(uncheckedManual).map((groupe) => (
+            <div key={groupe.dayIso} className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide opacity-60">
+                {groupe.key === "today"
+                  ? t("courses.today")
+                  : groupe.key === "yesterday"
+                    ? t("courses.yesterday")
+                    : formatDate(groupe.dayIso, locale)}
+              </h3>
+              <ul className="space-y-2">{groupe.items.map(renderItem)}</ul>
+            </div>
+          ))}
         </div>
       )}
 
@@ -244,7 +263,9 @@ export default function CoursesPage() {
         <div className="space-y-2">
           <h2 className="text-sm font-medium opacity-60">{t("courses.purchased")}</h2>
           <ul className="space-y-2">
-            {checked.map((item) => (
+            {[...checked]
+              .sort((a, b) => shoppingItemDate(b).localeCompare(shoppingItemDate(a)))
+              .map((item) => (
               <li
                 key={item.id}
                 className="flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 p-3 opacity-50"
@@ -255,8 +276,13 @@ export default function CoursesPage() {
                   onChange={(e) => handleToggle(item.id, e.target.checked)}
                   title={t("courses.uncheckTitle")}
                 />
-                <span className="flex-1 line-through">
-                  {item.item_name} <span className="text-xs">{item.quantity} {unitLabel(t, item.unit)}</span>
+                <span className="flex-1 min-w-0 line-through">
+                  <span className="break-words">
+                    {item.item_name} <span className="text-xs">{formatQuantity(t, item.quantity, item.unit)}</span>
+                  </span>
+                  <span className="block text-xs no-underline opacity-70">
+                    {formatDate(shoppingItemDate(item), locale)}
+                  </span>
                 </span>
                 <button type="button" onClick={() => handleRemove(item.id)} className="text-xs">
                   ✕

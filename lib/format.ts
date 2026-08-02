@@ -83,6 +83,19 @@ function parseDisplayDate(value: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+// Jour CALENDAIRE LOCAL d'un horodatage, au format "YYYY-MM-DD". Sert à
+// regrouper des éléments par journée : deux horodatages du même jour local
+// doivent tomber dans le même groupe, quel que soit le fuseau. Ne pas utiliser
+// `toISOString().slice(0, 10)` pour cela — cette forme donne le jour UTC, qui
+// bascule à un autre moment que le jour de l'utilisateur.
+export function localDayIso(value: string | Date | null | undefined): string | null {
+  const date = value instanceof Date ? value : parseDisplayDate(value);
+  if (!date || Number.isNaN(date.getTime())) return null;
+  const mois = String(date.getMonth() + 1).padStart(2, "0");
+  const jour = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${mois}-${jour}`;
+}
+
 // Date du jour au format ISO court, tel qu'attendu par les colonnes `date` de
 // Supabase (`purchase_date`, `expiry_date`) et par les champs de saisie
 // `<input type="date">`. Remplace les `new Date().toISOString().slice(0, 10)`

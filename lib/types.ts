@@ -91,7 +91,12 @@ export interface ShoppingListItem {
   source: "manual" | "auto";
   recipe_name: string | null; // nom de la recette d'origine si source === "auto"
   checked: boolean;
-  updated_at: string;
+  updated_at: string; // horodatage TECHNIQUE, réécrit à chaque modification
+  // Horodatage TECHNIQUE d'ajout à la liste, posé une seule fois et jamais
+  // réécrit ensuite — contrairement à `updated_at`, que cocher un article
+  // déplace. Optionnel : les lignes locales antérieures à cette colonne n'en
+  // ont pas, d'où le repli `created_at ?? updated_at` (voir shoppingItemDate).
+  created_at?: string;
 }
 
 export interface Feedback {
