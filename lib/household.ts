@@ -3,6 +3,7 @@
 import { createClient } from "./supabase/client";
 import { migrateLocalDataToHousehold } from "./householdMigration";
 import { pullHouseholdData } from "./householdPull";
+import { runPostAuthRepairs } from "./postAuthRepairs";
 import { confirmRemoteHousehold, getHouseholdId } from "./session";
 
 export interface HouseholdInfo {
@@ -84,6 +85,11 @@ export async function getMyHousehold(): Promise<HouseholdInfo | null> {
     });
     if (outcome.success) {
       confirmRemoteHousehold(household.id, user.id);
+      // Réparations locales post-authentification : c'est ici, et seulement
+      // ici, que `user.id` et le foyer Supabase confirmé sont tous deux connus.
+      // Ne lève jamais (voir lib/postAuthRepairs.ts) : un échec est consigné
+      // dans local_repairs et n'interrompt pas l'affichage du foyer.
+      await runPostAuthRepairs({ householdId: household.id, authenticatedUserId: user.id });
       // Récupère aussi ce qui a pu être créé/modifié depuis un autre
       // appareil. Fire-and-forget : ne bloque pas l'affichage de l'écran
       // Foyer, et l'anti-rafale de pullHouseholdData évite un appel réseau
@@ -119,6 +125,9 @@ export async function createHousehold(name: string): Promise<HouseholdInfo> {
   });
   if (!outcome.success) throw new Error("error.migrationFailed");
   confirmRemoteHousehold(household.id, user.id);
+  // Ne lève jamais : le foyer vient d'être créé ou rejoint avec succès, une
+  // réparation en échec ne doit surtout pas annuler ce résultat.
+  await runPostAuthRepairs({ householdId: household.id, authenticatedUserId: user.id });
   void pullHouseholdData({ householdId: household.id, authenticatedUserId: user.id });
   return household;
 }
@@ -189,6 +198,9 @@ export async function redeemApprovalCode(code: string): Promise<HouseholdInfo> {
   });
   if (!outcome.success) throw new Error("error.migrationFailed");
   confirmRemoteHousehold(household.id, user.id);
+  // Ne lève jamais : le foyer vient d'être créé ou rejoint avec succès, une
+  // réparation en échec ne doit surtout pas annuler ce résultat.
+  await runPostAuthRepairs({ householdId: household.id, authenticatedUserId: user.id });
   void pullHouseholdData({ householdId: household.id, authenticatedUserId: user.id });
   return household;
 }

@@ -110,6 +110,24 @@ interface AbsentDetail {
   payloadsDistincts: number;
 }
 
+// Rapport de la réparation post-authentification (table local_repairs).
+// Lecture seule, comme tout le reste de cette page.
+interface RepairView {
+  repair_id: string;
+  status: string;
+  started_at: string;
+  completed_at: string;
+  last_error: string; // caviardé puis tronqué à 300 caractères
+  inspectedDeadLetter: number | string;
+  matchedEntries: number | string;
+  produits: number | string;
+  archivedEntries: number | string;
+  alreadyArchived: number | string;
+  requeuedProducts: number | string;
+  discardedNoLocalRow: number | string;
+  skippedOtherSignature: number | string;
+}
+
 interface Resume {
   produitsUneSeuleDeadLetter: number;
   produitsPlusieursDeadLetter: number;
@@ -139,6 +157,7 @@ interface Report {
     produitsProteges: number;
   };
   absentsDuSnapshot: { disponible: boolean; raison: string; nombre: number; lignes: OrphanRow[] };
+  reparations: RepairView[];
   signaturesDeadLetter: ErrorSignature[];
   detailAbsents: AbsentDetail[];
   resume: Resume;
@@ -260,6 +279,9 @@ export default function DiagnosticPage() {
       const queue = database ? await readAll<QueueRow>(database, "sync_queue") : [];
       const meta = database
         ? await readAll<Record<string, unknown>>(database, "pull_meta")
+        : [];
+      const repairs = database
+        ? await readAll<Record<string, unknown>>(database, "local_repairs")
         : [];
       const versionIdb = database ? database.version : null;
       if (database) database.close();
@@ -438,6 +460,32 @@ export default function DiagnosticPage() {
         }[remoteState.kind];
       }
 
+      // Seuls des compteurs, des horodatages et un message caviardé sont
+      // repris : jamais de payload, jamais added_by, jamais un identifiant
+      // complet d'utilisateur ou de foyer.
+      const champ = (source: Record<string, unknown> | null, cle: string): number | string => {
+        const valeur = source?.[cle];
+        return typeof valeur === "number" ? valeur : "—";
+      };
+      const reparations: RepairView[] = repairs.map((entry) => {
+        const rapport = (entry.report as Record<string, unknown> | null) ?? null;
+        return {
+          repair_id: typeof entry.id === "string" ? entry.id : "(inconnu)",
+          status: typeof entry.status === "string" ? entry.status : "(inconnu)",
+          started_at: isoOf(entry.started_at) || "—",
+          completed_at: isoOf(entry.completed_at) || "—",
+          last_error: entry.last_error ? redact(entry.last_error) : "—",
+          inspectedDeadLetter: champ(rapport, "inspectedDeadLetter"),
+          matchedEntries: champ(rapport, "matchedEntries"),
+          produits: champ(rapport, "produits"),
+          archivedEntries: champ(rapport, "archivedEntries"),
+          alreadyArchived: champ(rapport, "alreadyArchived"),
+          requeuedProducts: champ(rapport, "requeuedProducts"),
+          discardedNoLocalRow: champ(rapport, "discardedNoLocalRow"),
+          skippedOtherSignature: champ(rapport, "skippedOtherSignature"),
+        };
+      });
+
       const pullMeta = meta.find((entry) => entry.household_id === localHouseholdId);
 
       if (annule) return;
@@ -474,6 +522,7 @@ export default function DiagnosticPage() {
         },
         fileStockItems: { ...compteurs, produitsProteges: queueByRowId.size },
         absentsDuSnapshot: { disponible, raison, nombre: absents.length, lignes: absents },
+        reparations,
         signaturesDeadLetter,
         detailAbsents,
         resume,
@@ -667,6 +716,64 @@ export default function DiagnosticPage() {
               </table>
             </div>
           </>
+        )}
+      </section>
+
+      <section className={carte}>
+        <h2 className="font-medium text-sm">Réparations locales</h2>
+        {report.reparations.length === 0 ? (
+          <p className="text-sm opacity-60">
+            Aucune réparation enregistrée sur cet appareil.
+          </p>
+        ) : (
+          report.reparations.map((reparation) => (
+            <div
+              key={reparation.repair_id}
+              className="rounded-lg border border-black/10 dark:border-white/10 p-2 mt-2 space-y-1"
+            >
+              <div className="flex justify-between gap-2 text-sm">
+                <code className="text-xs truncate">{reparation.repair_id}</code>
+                <strong
+                  className={
+                    reparation.status === "failed"
+                      ? "text-red-600 dark:text-red-400 shrink-0"
+                      : reparation.status === "completed"
+                        ? "text-emerald-600 dark:text-emerald-400 shrink-0"
+                        : "shrink-0"
+                  }
+                >
+                  {reparation.status}
+                </strong>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 text-xs opacity-70">
+                <span>démarrée</span>
+                <span className="text-right">{reparation.started_at}</span>
+                <span>terminée</span>
+                <span className="text-right">{reparation.completed_at}</span>
+                <span>dead_letter examinées</span>
+                <span className="text-right">{reparation.inspectedDeadLetter}</span>
+                <span>entrées retenues</span>
+                <span className="text-right">{reparation.matchedEntries}</span>
+                <span>produits</span>
+                <span className="text-right">{reparation.produits}</span>
+                <span>entrées archivées</span>
+                <span className="text-right">{reparation.archivedEntries}</span>
+                <span>déjà archivées</span>
+                <span className="text-right">{reparation.alreadyArchived}</span>
+                <span>produits remis en file</span>
+                <strong className="text-right">{reparation.requeuedProducts}</strong>
+                <span>sans ligne locale</span>
+                <span className="text-right">{reparation.discardedNoLocalRow}</span>
+                <span>autre signature, intactes</span>
+                <span className="text-right">{reparation.skippedOtherSignature}</span>
+              </div>
+              {reparation.last_error !== "—" && (
+                <p className="text-xs font-mono text-red-600 dark:text-red-400 break-words whitespace-pre-wrap">
+                  {reparation.last_error}
+                </p>
+              )}
+            </div>
+          ))
         )}
       </section>
 

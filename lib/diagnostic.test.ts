@@ -216,11 +216,15 @@ describe("page /diagnostic — signatures et détail", () => {
   it("24. les messages affichés passent tous par redact()", () => {
     expect(CODE).toContain("redact(entry.last_error)");
     expect(CODE).toContain("redact(derniere.last_error)");
-    // Toute lecture de last_error passe par redact() sur la même ligne :
-    // aucune n'est rendue telle quelle.
+    // Toute lecture BRUTE de last_error passe par redact() sur la même ligne.
+    // `reparation.last_error` fait exception : c'est un champ du modèle de vue,
+    // déjà produit par redact() au moment de la construction du rapport.
     const lectures = CODE.split("\n").filter((ligne) => ligne.includes(".last_error"));
     expect(lectures.length).toBeGreaterThan(0);
-    for (const ligne of lectures) expect(ligne).toContain("redact(");
+    for (const ligne of lectures) {
+      const dejaCaviarde = ligne.includes("reparation.last_error");
+      expect(dejaCaviarde || ligne.includes("redact(")).toBe(true);
+    }
   });
 });
 
