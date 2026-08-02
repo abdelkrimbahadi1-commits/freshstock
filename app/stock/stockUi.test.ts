@@ -10,6 +10,15 @@ import { describe, expect, it } from "vitest";
 // remaniement. Le rendu final reste validé manuellement sur Android.
 
 const LISTE = readFileSync(join(__dirname, "page.tsx"), "utf8");
+const FICHE = readFileSync(join(__dirname, "[id]", "page.tsx"), "utf8");
+const DETAIL = readFileSync(join(__dirname, "..", "..", "components", "StockItemDetail.tsx"), "utf8");
+
+// Sources décommentées : les commentaires décrivent volontairement ce qui est
+// interdit, seul le code doit en être exempt.
+const decommente = (source: string) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+const FICHE_CODE = decommente(FICHE);
+const DETAIL_CODE = decommente(DETAIL);
 
 describe("nom d'article dans la liste Stock", () => {
   it("1. le nom n'est plus tronqué à une seule ligne", () => {
@@ -59,5 +68,70 @@ describe("navigation vers la fiche détaillée", () => {
     expect(apresLien).toContain('handleStatus(item.id, "consumed")');
     expect(apresLien).toContain('handleStatus(item.id, "discarded")');
     expect(apresLien).toContain("openExpiryEditor(item)");
+  });
+});
+
+describe("fiche détaillée /stock/[id]", () => {
+  it("7. lit params via l'API use(), conformément à cette version de Next", () => {
+    // `params` est une Promise ; dans un Client Component elle se lit avec
+    // use(). Un composant écrit « de mémoire » déstructurerait params
+    // directement et casserait au build.
+    expect(FICHE_CODE).toMatch(/params:\s*Promise<\{\s*id:\s*string\s*\}>/);
+    expect(FICHE_CODE).toContain("use(params)");
+  });
+
+  it("8. est strictement en lecture : aucune mutation, aucun appel réseau", () => {
+    for (const interdit of [
+      "queueWrite",
+      "flushSyncQueue",
+      "pullHouseholdData",
+      "setStockItemStatus",
+      "updateExpiryDate",
+      "addStockItem",
+      "createClient",
+      ".put(",
+      ".add(",
+      ".update(",
+      ".delete(",
+      "localStorage",
+    ]) {
+      expect(FICHE_CODE, `fiche : ${interdit}`).not.toContain(interdit);
+      expect(DETAIL_CODE, `détail : ${interdit}`).not.toContain(interdit);
+    }
+  });
+
+  it("9. vérifie le foyer courant via getStockItem", () => {
+    expect(FICHE_CODE).toContain("getStockItem(id)");
+  });
+
+  it("10. gère explicitement l'article absent", () => {
+    expect(FICHE_CODE).toContain('statut: "absent"');
+    expect(FICHE_CODE).toContain("stockDetail.notFound");
+  });
+
+  it("11. distingue les trois dates de natures différentes", () => {
+    expect(DETAIL_CODE).toContain("stockDetail.createdAt");
+    expect(DETAIL_CODE).toContain("item.created_at");
+    expect(DETAIL_CODE).toContain("stockDetail.purchaseDate");
+    expect(DETAIL_CODE).toContain("item.purchase_date");
+    expect(DETAIL_CODE).toContain("stockDetail.updatedAt");
+    expect(DETAIL_CODE).toContain("item.updated_at");
+  });
+
+  it("12. n'affiche jamais added_by", () => {
+    expect(DETAIL_CODE).not.toContain("added_by");
+    expect(FICHE_CODE).not.toContain("added_by");
+  });
+
+  it("13. n'affiche que les champs réellement disponibles", () => {
+    // Une ligne sans valeur est omise, une section vide disparaît.
+    expect(DETAIL_CODE).toContain("lignesUtiles");
+    expect(DETAIL_CODE).toMatch(/section\.lignes\.length > 0/);
+  });
+
+  it("14. reste extensible : sections déclaratives, formatage centralisé", () => {
+    expect(DETAIL_CODE).toMatch(/const sections:\s*Section\[\]/);
+    expect(DETAIL_CODE).toContain('from "@/lib/format"');
+    expect(DETAIL_CODE).not.toContain("toFixed(");
   });
 });

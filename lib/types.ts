@@ -46,12 +46,17 @@ export interface StockItem {
   quantity: number;
   unit: string;
   location: StockLocation;
-  purchase_date: string; // ISO date
+  purchase_date: string; // ISO date — date METIER d'achat, saisissable
   expiry_date: string; // ISO date
   price: number | null;
   added_by: string | null;
   status: StockStatus;
-  updated_at: string;
+  updated_at: string; // horodatage TECHNIQUE de derniere modification
+  // Horodatage TECHNIQUE d'entree dans FreshStock, distinct de purchase_date.
+  // Optionnel : la colonne Supabase correspondante n'existe pas encore, et
+  // aucune ecriture ne la pose pour l'instant. Les lignes locales anterieures
+  // n'en ont donc pas — l'affichage doit le tolerer.
+  created_at?: string;
 }
 
 export interface Recipe {

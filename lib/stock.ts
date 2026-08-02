@@ -68,6 +68,16 @@ export async function listActiveStock(): Promise<StockItem[]> {
   return items.sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
 }
 
+// Lecture d'un article par son id, cloisonnee au foyer courant : un article
+// appartenant a un autre foyer local n'est jamais retourne, meme si son id est
+// connu. Retourne undefined si l'article n'existe pas ou n'appartient pas au
+// foyer actif.
+export async function getStockItem(id: string): Promise<StockItem | undefined> {
+  const item = await db.stock_items.get(id);
+  if (!item) return undefined;
+  return item.household_id === getHouseholdId() ? item : undefined;
+}
+
 export async function listAllStockItems(): Promise<StockItem[]> {
   const householdId = getHouseholdId();
   return db.stock_items.where("household_id").equals(householdId).toArray();
