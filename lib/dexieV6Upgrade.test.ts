@@ -72,7 +72,11 @@ describe("upgrade automatique Dexie v5 -> v6", () => {
 
     // --- Ouverture par le code applicatif, qui déclare la v6 ---
     await db.open();
-    expect(db.verno).toBe(6);
+    // Le sujet du test est l'EXÉCUTION de l'upgrade v6, pas le numéro de
+    // version courant : celui-ci augmente à chaque nouvelle version déclarée
+    // (v7 pour local_repairs, etc.), et une base v5 traverse alors toutes les
+    // versions intermédiaires en une seule ouverture.
+    expect(db.verno).toBeGreaterThanOrEqual(6);
 
     const requeued = await db.sync_queue.get(requeuedId);
     expect(requeued?.status).toBe(SYNC_STATUS.PENDING);
@@ -101,7 +105,7 @@ describe("upgrade automatique Dexie v5 -> v6", () => {
     db.close();
     await db.open();
 
-    expect(db.verno).toBe(6);
+    expect(db.verno).toBeGreaterThanOrEqual(6);
     expect(await db.sync_queue.toArray()).toEqual(queueBefore);
     expect(await db.sync_queue_discarded.toArray()).toEqual(archiveBefore);
   });

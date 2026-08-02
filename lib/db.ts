@@ -46,6 +46,11 @@ export interface SyncQueueEntry {
 // jamais dupliquée ni réécrite).
 export const DISCARD_REASON = {
   MISSING_UPDATED_AT_AND_LOCAL_ROW_ABSENT: "missing_updated_at_and_local_row_absent",
+  // LOT « réparation RLS » : écritures stock_items poussées alors que
+  // household_id était encore un identifiant local, donc rejetées par la policy
+  // `stock_items_all_members` (42501) dès le premier essai. Voir
+  // lib/stockRlsRepair.ts.
+  STOCK_ITEMS_RLS_BEFORE_HOUSEHOLD_MEMBERSHIP: "stock_items_rls_before_household_membership",
 } as const;
 
 export type DiscardReason = (typeof DISCARD_REASON)[keyof typeof DISCARD_REASON];
@@ -115,6 +120,45 @@ export interface PullMetaRecord {
   stock_items: PullTableMeta;
   shopping_list: PullTableMeta;
   feedback: PullTableMeta;
+}
+
+// Réparations locales ponctuelles (« one-shot ») exécutées APRÈS
+// authentification, quand `user.id` et le `household_id` Supabase confirmé sont
+// tous deux connus — ce qu'un `upgrade()` Dexie, qui s'exécute à l'ouverture de
+// la base, ne peut pas garantir.
+//
+// Reprend le motif éprouvé de `household_migrations` : seul `completed`
+// court-circuite. Un `in_progress` laissé par une fermeture ou un crash entre
+// l'écriture du marqueur et la transaction ne bloque donc RIEN — la réparation
+// est simplement rejouée au prochain appel, et son idempotence structurelle
+// (les entrées traitées ne sont plus en file) garantit l'absence de doublon.
+export const REPAIR_STATUS = {
+  IN_PROGRESS: "in_progress",
+  COMPLETED: "completed",
+  FAILED: "failed",
+} as const;
+
+export type RepairStatus = (typeof REPAIR_STATUS)[keyof typeof REPAIR_STATUS];
+
+export interface StockRlsRepairReport {
+  inspectedDeadLetter: number; // entrées dead_letter stock_items examinées
+  matchedEntries: number; // retenues par la signature RLS exacte
+  produits: number; // identifiants produit distincts parmi elles
+  archivedEntries: number; // archivées dans sync_queue_discarded
+  alreadyArchived: number; // archive déjà présente -> aucun doublon créé
+  requeuedProducts: number; // une seule nouvelle entrée pending par produit
+  discardedNoLocalRow: number; // ligne locale disparue -> aucune résurrection
+  skippedOtherSignature: number; // dead_letter stock_items d'une AUTRE cause, intactes
+}
+
+export interface LocalRepairRecord {
+  id: string;
+  status: RepairStatus;
+  started_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  last_error: string | null;
+  report: StockRlsRepairReport | null;
 }
 
 // --- Récupération du passif dead_letter « shopping_list.updated_at » --------
@@ -262,6 +306,7 @@ class FreshStockDB extends Dexie {
   sync_queue!: EntityTable<SyncQueueEntry, "id">;
   sync_queue_discarded!: EntityTable<DiscardedSyncQueueEntry, "original_queue_id">;
   household_migrations!: EntityTable<HouseholdMigrationRecord, "id">;
+  local_repairs!: EntityTable<LocalRepairRecord, "id">;
   pull_meta!: EntityTable<PullMetaRecord, "household_id">;
 
   constructor() {
@@ -356,6 +401,28 @@ class FreshStockDB extends Dexie {
       .upgrade(async (tx) => {
         await requeueMissingUpdatedAtFailures(tx);
       });
+    // v7 : table neuve `local_repairs` (marqueur des réparations locales
+    // one-shot). AUCUNE fonction `upgrade()` ici, volontairement : la
+    // réparation associée (lib/stockRlsRepair.ts) a besoin de `user.id` et du
+    // `household_id` Supabase confirmé, indisponibles à l'ouverture de la base.
+    // Elle est donc déclenchée APRÈS authentification, et ce store ne sert qu'à
+    // porter son marqueur d'idempotence et son rapport.
+    //
+    // Cette version doit rester déclarée DÉFINITIVEMENT : une version IndexedDB
+    // ne redescend jamais, et du code s'arrêtant à la v6 casserait toute base
+    // déjà passée en v7. Tout correctif ultérieur passera par une v8.
+    this.version(7).stores({
+      stock_items: "id, household_id, status, expiry_date, category",
+      shopping_list: "id, household_id, checked",
+      products: "id, barcode",
+      meal_history: "id, household_id, date",
+      feedback: "id, household_id, created_at",
+      sync_queue: "++id, table, created_at, status, next_retry_at",
+      sync_queue_discarded: "original_queue_id, table, discarded_at, discarded_reason",
+      household_migrations: "id, old_household_id, new_household_id, status",
+      local_repairs: "id, status",
+      pull_meta: "household_id",
+    });
   }
 }
 
