@@ -3,17 +3,12 @@
 import { useState } from "react";
 import ExpiryDatePicker from "@/components/ExpiryDatePicker";
 import { useLocale } from "@/components/LocaleProvider";
+import { isoDateInDays } from "@/lib/format";
 import { saveLocalProduct } from "@/lib/products";
 import { addStockItem } from "@/lib/stock";
 import { CATEGORIES, DEFAULT_SHELF_LIFE_DAYS, type Category, type StockLocation } from "@/lib/types";
 
 const LOCATIONS: StockLocation[] = ["frigo", "congelateur", "placard", "autre"];
-
-function addDays(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 export default function AddStockItemForm({
   initialName = "",
@@ -38,7 +33,7 @@ export default function AddStockItemForm({
   const [quantity, setQuantity] = useState(1);
   const [unit, setUnit] = useState("");
   const [location, setLocation] = useState<StockLocation>("placard");
-  const [expiryDate, setExpiryDate] = useState(addDays(DEFAULT_SHELF_LIFE_DAYS[initialCategory]));
+  const [expiryDate, setExpiryDate] = useState(isoDateInDays(DEFAULT_SHELF_LIFE_DAYS[initialCategory]));
   const [price, setPrice] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
@@ -87,7 +82,7 @@ export default function AddStockItemForm({
         onChange={(e) => {
           const c = e.target.value as Category;
           setCategory(c);
-          setExpiryDate(addDays(DEFAULT_SHELF_LIFE_DAYS[c]));
+          setExpiryDate(isoDateInDays(DEFAULT_SHELF_LIFE_DAYS[c]));
         }}
         className="w-full rounded-lg border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm"
       >

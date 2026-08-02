@@ -12,6 +12,7 @@ import {
   missingPriceDiscardedCount,
   type BudgetSummary,
 } from "@/lib/budget";
+import { formatPrice } from "@/lib/format";
 import { triggerPullIfSignedIn } from "@/lib/household";
 import { listAllStockItems } from "@/lib/stock";
 import type { StockItem } from "@/lib/types";
@@ -70,7 +71,7 @@ export default function BudgetPage() {
         <BackButton onClick={() => setDetail(null)} />
         <h1 className="text-xl font-semibold">{detailTitle}</h1>
         {detail === "wasteAvoided" && <p className="text-xs opacity-60">{t("budget.wasteAvoidedRule")}</p>}
-        <p className="text-2xl font-semibold">{total.toFixed(2)} €</p>
+        <p className="text-2xl font-semibold">{formatPrice(total)}</p>
         {missingPriceCount > 0 && (
           <p className="text-xs rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 px-3 py-2">
             {t("budget.missingPriceHint", { count: missingPriceCount })}
@@ -91,7 +92,7 @@ export default function BudgetPage() {
                     {item.quantity} {item.unit}
                   </p>
                 </div>
-                <p className="font-medium shrink-0">{(item.price ?? 0).toFixed(2)} €</p>
+                <p className="font-medium shrink-0">{formatPrice(item.price)}</p>
               </li>
             ))}
           </ul>
@@ -114,7 +115,7 @@ export default function BudgetPage() {
             className="text-left rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 p-4 shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)] active:shadow-none active:translate-y-[1px]"
           >
             <p className="text-xs opacity-60">{t("budget.monthlySpend")}</p>
-            <p className="text-2xl font-semibold text-accent">{summary.monthlySpend.toFixed(2)} €</p>
+            <p className="text-2xl font-semibold text-accent">{formatPrice(summary.monthlySpend)}</p>
           </button>
           <button
             type="button"
@@ -123,7 +124,7 @@ export default function BudgetPage() {
           >
             <p className="text-xs opacity-60">{t("budget.wasteAvoided")}</p>
             <p className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
-              {summary.wasteAvoided.toFixed(2)} €
+              {formatPrice(summary.wasteAvoided)}
             </p>
           </button>
           <button
@@ -133,7 +134,7 @@ export default function BudgetPage() {
           >
             <p className="text-xs opacity-60">{t("budget.wasteLost")}</p>
             <p className="text-2xl font-semibold text-red-600 dark:text-red-400">
-              {summary.wasteLost.toFixed(2)} €
+              {formatPrice(summary.wasteLost)}
             </p>
           </button>
           {summary.itemsWithPriceCount === 0 && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { db } from "./db";
+import { isoDateInDays, todayIso } from "./format";
 import { queueWrite } from "./offlineSync";
 import { getEffectiveUserId, getHouseholdId } from "./session";
 import {
@@ -22,12 +23,6 @@ export interface NewStockItemInput {
   price?: number | null;
 }
 
-function addDays(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 export async function addStockItem(input: NewStockItemInput): Promise<StockItem> {
   const item: StockItem = {
     id: crypto.randomUUID(),
@@ -39,8 +34,8 @@ export async function addStockItem(input: NewStockItemInput): Promise<StockItem>
     quantity: input.quantity,
     unit: input.unit,
     location: input.location,
-    purchase_date: new Date().toISOString().slice(0, 10),
-    expiry_date: input.expiry_date ?? addDays(DEFAULT_SHELF_LIFE_DAYS[input.category]),
+    purchase_date: todayIso(),
+    expiry_date: input.expiry_date ?? isoDateInDays(DEFAULT_SHELF_LIFE_DAYS[input.category]),
     price: input.price ?? null,
     added_by: await getEffectiveUserId(),
     status: "in_stock",

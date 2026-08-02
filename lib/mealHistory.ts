@@ -1,6 +1,7 @@
 "use client";
 
 import { db } from "./db";
+import { todayIso } from "./format";
 import { setStockItemStatus } from "./stock";
 import { getHouseholdId } from "./session";
 import type { MealHistoryEntry, MenuSuggestion } from "./types";
@@ -19,7 +20,7 @@ export async function cookMenu(suggestion: MenuSuggestion): Promise<void> {
     id: crypto.randomUUID(),
     household_id: getHouseholdId(),
     recipe_id: suggestion.recipe.id,
-    date: new Date().toISOString().slice(0, 10),
+    date: todayIso(),
     ingredients_used: suggestion.matchedExpiringItems.map((i) => ({
       name: i.name,
       quantity: i.quantity,
