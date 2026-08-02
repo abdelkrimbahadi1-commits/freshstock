@@ -85,6 +85,27 @@ alter table shopping_list add column if not exists recipe_name text;
 -- lib/householdPull.ts, qui se base uniquement sur sync_queue pour ça).
 alter table shopping_list add column if not exists updated_at timestamptz not null default now();
 
+-- Date d'ENTRÉE de la ligne, distincte des deux autres horodatages :
+--   * `created_at`    : technique, posé une seule fois à la création et jamais
+--                       réécrit ensuite ;
+--   * `updated_at`    : technique, réécrit à CHAQUE modification — cocher un
+--                       article de la liste le déplace, il ne peut donc pas
+--                       servir de date d'ajout ;
+--   * `purchase_date` : métier et saisissable (stock_items uniquement).
+--
+-- Rétro-remplissage honnête depuis `updated_at` plutôt qu'un `now()` qui
+-- daterait d'aujourd'hui toutes les lignes déjà existantes. La colonne est
+-- donc ajoutée nullable, remplie, puis contrainte — dans cet ordre.
+alter table shopping_list add column if not exists created_at timestamptz;
+update shopping_list set created_at = coalesce(created_at, updated_at);
+alter table shopping_list alter column created_at set default now();
+alter table shopping_list alter column created_at set not null;
+
+alter table stock_items add column if not exists created_at timestamptz;
+update stock_items set created_at = coalesce(created_at, updated_at);
+alter table stock_items alter column created_at set default now();
+alter table stock_items alter column created_at set not null;
+
 -- Avis utilisateurs (écrits ou dictés à l'oral puis transcrits côté client).
 create table if not exists feedback (
   id uuid primary key default gen_random_uuid(),
