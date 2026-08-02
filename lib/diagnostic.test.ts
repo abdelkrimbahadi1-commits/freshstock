@@ -248,3 +248,42 @@ describe("page /diagnostic — pas de faux diagnostic", () => {
     expect(CODE).toContain("!report.absentsDuSnapshot.disponible");
   });
 });
+
+describe("file de synchronisation shopping_list", () => {
+  it("25. affiche les quatre statuts et le nombre d'articles protégés", () => {
+    expect(CODE).toContain("File de synchronisation (shopping_list)");
+    expect(CODE).toContain("fileShoppingList");
+    for (const statut of ["pending", "processing", "retry_pending", "dead_letter"]) {
+      expect(CODE).toContain(`"${statut}"`);
+    }
+    expect(CODE).toContain("articlesProteges");
+    expect(CODE).toContain("articles protégés par sync_queue");
+  });
+
+  it("26. réutilise la lecture IndexedDB existante, sans requête supplémentaire", () => {
+    // Le résumé est calculé à partir du tableau `queue` déjà lu pour
+    // stock_items : une seule ouverture de la base pour toute la page.
+    expect(CODE).toContain('resumerFile(queue, "shopping_list")');
+    // `sync_queue` n'est lu qu'une fois.
+    const lectures = CODE.match(/readAll<[^>]*>\(database, "sync_queue"\)/g) ?? [];
+    expect(lectures).toHaveLength(1);
+  });
+
+  it("27. n'expose ni payload, ni identifiant, ni nom d'article", () => {
+    // resumerFile ne conserve qu'un COMPTE d'identifiants distincts.
+    expect(CODE).toContain("resume.articlesProteges = identifiants.size");
+    // Aucun champ du résumé ne porte de valeur non numérique.
+    expect(CODE).toMatch(/interface FileResume \{[^}]*articlesProteges: number;[^}]*\}/);
+    expect(CODE).not.toMatch(/fileShoppingList\.(payload|item_name|id)\b/);
+  });
+
+  it("28. resumerFile est une fonction pure : aucune écriture, aucun accès base", () => {
+    const debut = CODE.indexOf("function resumerFile(");
+    const fin = CODE.indexOf("\n}", debut);
+    expect(debut).toBeGreaterThan(-1);
+    const corps = CODE.slice(debut, fin);
+    for (const interdit of ["await", "indexedDB", "transaction", "createClient", ".put(", ".delete("]) {
+      expect(corps, `resumerFile : ${interdit}`).not.toContain(interdit);
+    }
+  });
+});

@@ -128,6 +128,16 @@ interface RepairView {
   skippedOtherSignature: number | string;
 }
 
+// Résumé d'une file de synchronisation pour UNE table. Uniquement des
+// compteurs : aucun payload, aucun identifiant, aucun nom d'article.
+interface FileResume {
+  pending: number;
+  processing: number;
+  retry_pending: number;
+  dead_letter: number;
+  articlesProteges: number; // identifiants distincts couverts par une entrée
+}
+
 interface Resume {
   produitsUneSeuleDeadLetter: number;
   produitsPlusieursDeadLetter: number;
@@ -156,6 +166,7 @@ interface Report {
     dead_letter: number;
     produitsProteges: number;
   };
+  fileShoppingList: FileResume;
   absentsDuSnapshot: { disponible: boolean; raison: string; nombre: number; lignes: OrphanRow[] };
   reparations: RepairView[];
   signaturesDeadLetter: ErrorSignature[];
@@ -195,6 +206,33 @@ function readAll<T>(database: IDBDatabase, store: string): Promise<T[]> {
     request.onsuccess = () => resolve(request.result as T[]);
     request.onerror = () => resolve([]);
   });
+}
+
+// Résume la file pour une table donnée, à partir des entrées DÉJÀ LUES : aucune
+// nouvelle ouverture d'IndexedDB, aucune requête supplémentaire. Fonction pure.
+function resumerFile(entrees: QueueRow[], table: string): FileResume {
+  const resume: FileResume = {
+    pending: 0,
+    processing: 0,
+    retry_pending: 0,
+    dead_letter: 0,
+    articlesProteges: 0,
+  };
+  const identifiants = new Set<string>();
+  for (const entry of entrees) {
+    if (entry.table !== table) continue;
+    const statut = typeof entry.status === "string" ? entry.status : "";
+    if (statut === "pending") resume.pending++;
+    else if (statut === "processing") resume.processing++;
+    else if (statut === "retry_pending") resume.retry_pending++;
+    else if (statut === "dead_letter") resume.dead_letter++;
+    const rowId = entry.payload?.id;
+    // Seul le NOMBRE d'identifiants distincts est conservé ; aucun identifiant
+    // n'est mémorisé au-delà de ce comptage, ni affiché.
+    if (typeof rowId === "string" && rowId.length > 0) identifiants.add(rowId);
+  }
+  resume.articlesProteges = identifiants.size;
+  return resume;
 }
 
 // --- Lecture Supabase, SELECT uniquement ------------------------------------
@@ -312,6 +350,9 @@ export default function DiagnosticPage() {
         if (actuel === "dead_letter") continue;
         queueByRowId.set(rowId, (statut || "aucune") as QueueState);
       }
+
+      // 4ter. Même résumé pour shopping_list, à partir des MÊMES entrées lues.
+      const fileShoppingList = resumerFile(queue, "shopping_list");
 
       // 4bis. Signatures d'échec distinctes parmi les dead_letter stock_items.
       const entreesStock = queue.filter((entry) => entry.table === "stock_items");
@@ -521,6 +562,7 @@ export default function DiagnosticPage() {
           parStatut,
         },
         fileStockItems: { ...compteurs, produitsProteges: queueByRowId.size },
+        fileShoppingList,
         absentsDuSnapshot: { disponible, raison, nombre: absents.length, lignes: absents },
         reparations,
         signaturesDeadLetter,
@@ -659,6 +701,28 @@ export default function DiagnosticPage() {
         <div className={ligne}>
           <span className="opacity-70">produits protégés par sync_queue</span>
           <strong>{report.fileStockItems.produitsProteges}</strong>
+        </div>
+      </section>
+
+      <section className={carte}>
+        <h2 className="font-medium text-sm">File de synchronisation (shopping_list)</h2>
+        {(["pending", "processing", "retry_pending", "dead_letter"] as const).map((statut) => (
+          <div key={statut} className={ligne}>
+            <span className="opacity-70">{statut}</span>
+            <strong
+              className={
+                statut === "dead_letter" && report.fileShoppingList.dead_letter > 0
+                  ? "text-red-600 dark:text-red-400"
+                  : ""
+              }
+            >
+              {report.fileShoppingList[statut]}
+            </strong>
+          </div>
+        ))}
+        <div className={ligne}>
+          <span className="opacity-70">articles protégés par sync_queue</span>
+          <strong>{report.fileShoppingList.articlesProteges}</strong>
         </div>
       </section>
 
