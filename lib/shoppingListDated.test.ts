@@ -7,7 +7,9 @@ vi.mock("./session", () => ({ getHouseholdId: vi.fn() }));
 
 import { getHouseholdId } from "./session";
 import {
+  NO_DATE_GROUP,
   addShoppingListItem,
+  compareShoppingItemsByDateDesc,
   groupShoppingListByDay,
   listShoppingList,
   shoppingItemDate,
@@ -222,11 +224,113 @@ describe("groupShoppingListByDay", () => {
     expect(items).toEqual(copie);
   });
 
-  it("16. ignore une date illisible plutôt que de créer un groupe fantôme", () => {
-    const casse = makeItem({ id: "casse", created_at: "pas-une-date" });
+  it("16. un created_at illisible retombe sur updated_at plutôt que d'écarter l'article", () => {
+    // Comportement CORRIGÉ : l'ancienne version écartait cet article du
+    // regroupement, alors que son updated_at était parfaitement exploitable.
+    const casse = makeItem({ id: "casse", created_at: "pas-une-date", updated_at: jour(2026, 7, 2) });
     const valide = makeItem({ id: "ok", created_at: jour(2026, 7, 2) });
     const groupes = groupShoppingListByDay([casse, valide], maintenant);
     expect(groupes).toHaveLength(1);
-    expect(groupes[0].items.map((i) => i.id)).toEqual(["ok"]);
+    expect(groupes[0].items.map((i) => i.id).sort()).toEqual(["casse", "ok"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Régression : incident /courses inaccessible (lignes héritées sans date)
+//
+// Une ligne de liste créée AVANT le LOT 4 (juillet 2026) ne possède NI
+// `created_at` NI `updated_at` : `addShoppingListItem` ne les posait pas, et le
+// type ne les déclarait pas. Le tri de la section « Achetés » appelait alors
+// `.localeCompare` sur `undefined`, ce qui levait une TypeError pendant le
+// rendu et rendait toute la page inaccessible.
+// ---------------------------------------------------------------------------
+
+// Objet reconstitué À L'IDENTIQUE de ce que produisait addShoppingListItem
+// avant le LOT 4. Construit sans passer par makeItem, pour qu'aucun champ ne
+// puisse s'y glisser par inadvertance.
+function ligneHeritee(id: string): ShoppingListItem {
+  return {
+    id,
+    household_id: FOYER,
+    item_name: "Pain",
+    quantity: 1,
+    unit: "unite",
+    source: "manual",
+    recipe_name: null,
+    checked: true,
+  } as unknown as ShoppingListItem;
+}
+
+describe("lignes héritées sans aucune date", () => {
+  const maintenant = new Date(2026, 7, 2, 12, 0, 0);
+  const jour = (a: number, m: number, j: number, h = 10) => new Date(a, m, j, h, 0, 0).toISOString();
+
+  it("17. shoppingItemDate retourne null, jamais undefined", () => {
+    const resultat = shoppingItemDate(ligneHeritee("legacy"));
+    expect(resultat).toBeNull();
+    expect(resultat).not.toBeUndefined();
+  });
+
+  it("18. le tri ne lève plus et place l'article sans date en dernier", () => {
+    const liste = [
+      ligneHeritee("legacy"),
+      makeItem({ id: "recent", created_at: jour(2026, 7, 2) }),
+      makeItem({ id: "ancien", created_at: jour(2026, 6, 20) }),
+    ];
+    expect(() => [...liste].sort(compareShoppingItemsByDateDesc)).not.toThrow();
+    expect([...liste].sort(compareShoppingItemsByDateDesc).map((i) => i.id)).toEqual([
+      "recent",
+      "ancien",
+      "legacy",
+    ]);
+  });
+
+  it("19. l'ordre entre plusieurs articles sans date reste stable", () => {
+    const liste = [ligneHeritee("a"), ligneHeritee("b"), ligneHeritee("c")];
+    expect([...liste].sort(compareShoppingItemsByDateDesc).map((i) => i.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("20. groupShoppingListByDay CONSERVE l'article sans date, dans un groupe dédié final", () => {
+    const groupes = groupShoppingListByDay(
+      [ligneHeritee("legacy"), makeItem({ id: "date", created_at: jour(2026, 7, 2) })],
+      maintenant
+    );
+    expect(groupes).toHaveLength(2);
+    const dernier = groupes[groupes.length - 1];
+    expect(dernier.key).toBe("undated");
+    expect(dernier.dayIso).toBe(NO_DATE_GROUP);
+    expect(dernier.items.map((i) => i.id)).toEqual(["legacy"]);
+    // Aucun article perdu.
+    expect(groupes.flatMap((g) => g.items)).toHaveLength(2);
+  });
+
+  it("21. aucun groupe sans date n'est créé quand tous les articles sont datés", () => {
+    const groupes = groupShoppingListByDay([makeItem({ created_at: jour(2026, 7, 2) })], maintenant);
+    expect(groupes.map((g) => g.key)).not.toContain("undated");
+  });
+
+  it("22. aucune date n'est inventée : la ligne héritée n'est pas modifiée", () => {
+    const ligne = ligneHeritee("legacy");
+    const copie = { ...ligne };
+    groupShoppingListByDay([ligne], maintenant);
+    [ligne].sort(compareShoppingItemsByDateDesc);
+    expect(ligne).toEqual(copie);
+    expect("created_at" in ligne).toBe(false);
+    expect("updated_at" in ligne).toBe(false);
+  });
+
+  it("23. mélange daté / non daté : les datés d'abord, ordre stable ensuite", () => {
+    const liste = [
+      ligneHeritee("sans-1"),
+      makeItem({ id: "vieux", created_at: jour(2026, 6, 1) }),
+      ligneHeritee("sans-2"),
+      makeItem({ id: "neuf", created_at: jour(2026, 7, 2) }),
+    ];
+    expect([...liste].sort(compareShoppingItemsByDateDesc).map((i) => i.id)).toEqual([
+      "neuf",
+      "vieux",
+      "sans-1",
+      "sans-2",
+    ]);
   });
 });

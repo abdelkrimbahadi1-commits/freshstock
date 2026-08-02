@@ -118,25 +118,65 @@ export async function removeShoppingListItem(id: string): Promise<void> {
   await queueWrite("shopping_list", "delete", { id });
 }
 
-// Date de référence d'un article de la liste. Repli TEMPORAIRE sur `updated_at`
-// pour les lignes locales créées avant l'existence de `created_at` : elles se
-// réaligneront d'elles-mêmes au premier pull, la colonne étant désormais
-// présente et rétro-remplie côté Supabase.
-export function shoppingItemDate(item: ShoppingListItem): string {
-  return item.created_at ?? item.updated_at;
+// Identifiant TECHNIQUE du groupe des articles sans date exploitable. Ce n'est
+// pas une date : il ne doit jamais être passé à un formateur de date.
+export const NO_DATE_GROUP = "__no_date__";
+
+function estDateExploitable(value: string | null | undefined): value is string {
+  return typeof value === "string" && localDayIso(value) !== null;
 }
 
-export type DayGroupKey = "today" | "yesterday" | "older";
+// Date de référence d'un article de la liste, ou `null` s'il n'en a aucune
+// d'exploitable. Retourne TOUJOURS `string | null`, jamais `undefined`.
+//
+// Les lignes créées avant le LOT 4 (juillet 2026) ne possèdent NI `created_at`
+// NI `updated_at` : le type les déclare pourtant obligatoires, ce que la donnée
+// locale héritée contredit. Le contrat est donc rendu honnête ici, pour que
+// TypeScript force le traitement du cas à chaque appel — c'est précisément son
+// absence qui avait rendu /courses inaccessible.
+//
+// Un `created_at` présent mais illisible n'est pas retenu : on retombe alors sur
+// `updated_at`, plutôt que de propager une valeur inutilisable.
+export function shoppingItemDate(item: ShoppingListItem): string | null {
+  if (estDateExploitable(item.created_at)) return item.created_at;
+  if (estDateExploitable(item.updated_at)) return item.updated_at;
+  return null;
+}
+
+// Comparateur unique du tri par date. Toute section triée par date doit passer
+// par lui — aucun `localeCompare` ne doit être écrit en ligne dans un composant.
+//
+//  * articles datés : du plus récent au plus ancien ;
+//  * articles sans date : toujours en dernier ;
+//  * entre deux articles sans date : ordre d'origine préservé (retour 0, le tri
+//    de JavaScript étant stable depuis ES2019).
+export function compareShoppingItemsByDateDesc(
+  a: ShoppingListItem,
+  b: ShoppingListItem
+): number {
+  const dateA = shoppingItemDate(a);
+  const dateB = shoppingItemDate(b);
+  if (dateA === null && dateB === null) return 0;
+  if (dateA === null) return 1;
+  if (dateB === null) return -1;
+  return dateB.localeCompare(dateA);
+}
+
+export type DayGroupKey = "today" | "yesterday" | "older" | "undated";
 
 export interface ShoppingListDayGroup {
   key: DayGroupKey;
-  dayIso: string; // jour calendaire LOCAL, "YYYY-MM-DD"
+  dayIso: string; // jour calendaire LOCAL "YYYY-MM-DD", ou NO_DATE_GROUP
   items: ShoppingListItem[];
 }
 
 // Regroupe par journée calendaire locale et trie du plus récent au plus ancien,
 // groupes comme articles. Fonction PURE : `now` est injecté pour rester
 // testable au changement de mois et d'année.
+//
+// Un article sans date exploitable n'est JAMAIS écarté : il rejoint un groupe
+// dédié placé en fin de liste. L'écarter le faisait disparaître de l'écran
+// alors que la donnée existait toujours en base.
 export function groupShoppingListByDay(
   items: ShoppingListItem[],
   now: Date = new Date()
@@ -146,17 +186,25 @@ export function groupShoppingListByDay(
   const hier = localDayIso(veille);
 
   const parJour = new Map<string, ShoppingListItem[]>();
+  const sansDate: ShoppingListItem[] = [];
+
   for (const item of items) {
     const jour = localDayIso(shoppingItemDate(item));
-    if (!jour) continue;
+    if (!jour) {
+      sansDate.push(item);
+      continue;
+    }
     const groupe = parJour.get(jour) ?? [];
     groupe.push(item);
     parJour.set(jour, groupe);
   }
 
-  return Array.from(parJour, ([dayIso, groupItems]) => ({
+  const groupesDates: ShoppingListDayGroup[] = Array.from(parJour, ([dayIso, groupItems]) => ({
     key: (dayIso === aujourdHui ? "today" : dayIso === hier ? "yesterday" : "older") as DayGroupKey,
     dayIso,
-    items: groupItems.sort((a, b) => shoppingItemDate(b).localeCompare(shoppingItemDate(a))),
+    items: [...groupItems].sort(compareShoppingItemsByDateDesc),
   })).sort((a, b) => b.dayIso.localeCompare(a.dayIso));
+
+  if (sansDate.length === 0) return groupesDates;
+  return [...groupesDates, { key: "undated", dayIso: NO_DATE_GROUP, items: sansDate }];
 }

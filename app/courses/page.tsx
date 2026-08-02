@@ -8,6 +8,7 @@ import { formatDate, formatQuantity } from "@/lib/format";
 import {
   addShoppingListItem,
   listKnownArticleNames,
+  compareShoppingItemsByDateDesc,
   groupShoppingListByDay,
   listShoppingList,
   shoppingItemDate,
@@ -251,7 +252,9 @@ export default function CoursesPage() {
                   ? t("courses.today")
                   : groupe.key === "yesterday"
                     ? t("courses.yesterday")
-                    : formatDate(groupe.dayIso, locale)}
+                    : groupe.key === "undated"
+                      ? t("courses.noDate")
+                      : formatDate(groupe.dayIso, locale)}
               </h3>
               <ul className="space-y-2">{groupe.items.map(renderItem)}</ul>
             </div>
@@ -264,7 +267,7 @@ export default function CoursesPage() {
           <h2 className="text-sm font-medium opacity-60">{t("courses.purchased")}</h2>
           <ul className="space-y-2">
             {[...checked]
-              .sort((a, b) => shoppingItemDate(b).localeCompare(shoppingItemDate(a)))
+              .sort(compareShoppingItemsByDateDesc)
               .map((item) => (
               <li
                 key={item.id}
