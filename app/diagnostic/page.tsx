@@ -112,6 +112,36 @@ interface AbsentDetail {
 
 // Rapport de la réparation post-authentification (table local_repairs).
 // Lecture seule, comme tout le reste de cette page.
+// Détail par article de liste de courses concerné par une dead_letter.
+// Aucun payload, aucun identifiant complet, aucun household_id, aucun added_by.
+interface ShoppingDetail {
+  id: string; // tronqué à 8 caractères
+  nom: string;
+  entreesFile: number;
+  statuts: string[];
+  operations: string[];
+  createdOldest: string;
+  createdNewest: string;
+  dernierMessage: string; // caviardé puis tronqué
+  payloadsMultiples: boolean;
+  payloadsDistincts: number;
+  ligneLocalePresente: boolean;
+  aCreatedAt: boolean; // PRÉSENCE seulement
+  aUpdatedAt: boolean; // PRÉSENCE seulement
+  presentDansSnapshot: boolean | null; // null = snapshot indisponible
+}
+
+interface ShoppingResume {
+  articlesUneSeuleDeadLetter: number;
+  articlesPlusieursDeadLetter: number;
+  maxEntreesParArticle: number;
+  operations: { upsert: number; delete: number };
+  articlesAvecLigneLocale: number;
+  articlesSansLigneLocale: number;
+  articlesAbsentsDuSnapshot: number | null;
+  absentsSnapshotSansDeadLetter: number | null;
+}
+
 interface RepairView {
   repair_id: string;
   status: string;
@@ -170,6 +200,10 @@ interface Report {
   absentsDuSnapshot: { disponible: boolean; raison: string; nombre: number; lignes: OrphanRow[] };
   reparations: RepairView[];
   signaturesDeadLetter: ErrorSignature[];
+  signaturesShoppingList: ErrorSignature[];
+  detailShoppingList: ShoppingDetail[];
+  resumeShoppingList: ShoppingResume;
+  snapshotShoppingList: { disponible: boolean; raison: string };
   detailAbsents: AbsentDetail[];
   resume: Resume;
 }
@@ -208,6 +242,40 @@ function readAll<T>(database: IDBDatabase, store: string): Promise<T[]> {
   });
 }
 
+// Signatures d'échec distinctes parmi les entrées dead_letter d'une table.
+// Fonction PURE, partagée par stock_items et shopping_list : le tri des
+// entrées ne peut pas diverger d'une table à l'autre.
+function construireSignatures(entrees: QueueRow[], table: string): ErrorSignature[] {
+  const parSignature = new Map<string, { entrees: QueueRow[]; articles: Set<string> }>();
+  for (const entry of entrees) {
+    if (entry.table !== table) continue;
+    if (entry.status !== "dead_letter") continue;
+    const message = redact(entry.last_error);
+    const groupe = parSignature.get(message) ?? { entrees: [], articles: new Set<string>() };
+    groupe.entrees.push(entry);
+    const rowId = entry.payload?.id;
+    if (typeof rowId === "string") groupe.articles.add(rowId);
+    parSignature.set(message, groupe);
+  }
+
+  return Array.from(parSignature, ([message, groupe]) => {
+    const dates = groupe.entrees.map((entry) => isoOf(entry.created_at)).filter(Boolean).sort();
+    return {
+      message,
+      entrees: groupe.entrees.length,
+      attempts: sortedUnique(
+        groupe.entrees.map((entry) => (typeof entry.attempts === "number" ? entry.attempts : -1))
+      ),
+      operations: sortedUnique(
+        groupe.entrees.map((entry) => (typeof entry.op === "string" ? entry.op : "?"))
+      ),
+      produitsDistincts: groupe.articles.size,
+      oldest: dates[0] ?? "—",
+      newest: dates[dates.length - 1] ?? "—",
+    };
+  }).sort((a, b) => b.entrees - a.entrees);
+}
+
 // Résume la file pour une table donnée, à partir des entrées DÉJÀ LUES : aucune
 // nouvelle ouverture d'IndexedDB, aucune requête supplémentaire. Fonction pure.
 function resumerFile(entrees: QueueRow[], table: string): FileResume {
@@ -240,6 +308,7 @@ function resumerFile(entrees: QueueRow[], table: string): FileResume {
 // Récupère les seuls `id` distants du foyer, page par page. Aucune autre
 // colonne n'est demandée : ni nom, ni prix, ni added_by ne transitent.
 async function fetchRemoteIds(
+  table: "stock_items" | "shopping_list",
   householdId: string
 ): Promise<{ ids: Set<string>; error: string | null }> {
   const supabase = createClient();
@@ -249,7 +318,7 @@ async function fetchRemoteIds(
   let from = 0;
   for (let page = 0; page < MAX_PAGES; page++) {
     const { data, error } = await supabase
-      .from("stock_items")
+      .from(table)
       .select("id")
       .eq("household_id", householdId)
       .order("id", { ascending: true })
@@ -321,6 +390,7 @@ export default function DiagnosticPage() {
       const repairs = database
         ? await readAll<Record<string, unknown>>(database, "local_repairs")
         : [];
+      const lignesCourses = database ? await readAll<LocalRow>(database, "shopping_list") : [];
       const versionIdb = database ? database.version : null;
       if (database) database.close();
 
@@ -365,45 +435,15 @@ export default function DiagnosticPage() {
         entreesParProduit.set(rowId, liste);
       }
 
-      const parSignature = new Map<
-        string,
-        { entrees: QueueRow[]; produits: Set<string> }
-      >();
       const deadLetterParProduit = new Map<string, number>();
       for (const entry of entreesStock) {
         if (entry.status !== "dead_letter") continue;
-        const message = redact(entry.last_error);
-        const groupe = parSignature.get(message) ?? { entrees: [], produits: new Set<string>() };
-        groupe.entrees.push(entry);
         const rowId = entry.payload?.id;
         if (typeof rowId === "string") {
-          groupe.produits.add(rowId);
           deadLetterParProduit.set(rowId, (deadLetterParProduit.get(rowId) ?? 0) + 1);
         }
-        parSignature.set(message, groupe);
       }
-
-      const signaturesDeadLetter: ErrorSignature[] = Array.from(
-        parSignature,
-        ([message, groupe]) => {
-          const dates = groupe.entrees.map((entry) => isoOf(entry.created_at)).filter(Boolean).sort();
-          return {
-            message,
-            entrees: groupe.entrees.length,
-            attempts: sortedUnique(
-              groupe.entrees.map((entry) =>
-                typeof entry.attempts === "number" ? entry.attempts : -1
-              )
-            ),
-            operations: sortedUnique(
-              groupe.entrees.map((entry) => (typeof entry.op === "string" ? entry.op : "?"))
-            ),
-            produitsDistincts: groupe.produits.size,
-            oldest: dates[0] ?? "—",
-            newest: dates[dates.length - 1] ?? "—",
-          };
-        }
-      ).sort((a, b) => b.entrees - a.entrees);
+      const signaturesDeadLetter = construireSignatures(queue, "stock_items");
 
       // 5. Comparaison au snapshot distant — seulement si elle a du sens.
       let absents: OrphanRow[] = [];
@@ -411,7 +451,7 @@ export default function DiagnosticPage() {
       let disponible = false;
       let raison = "";
       if (remoteState.kind === "ok" && localHouseholdId) {
-        const { ids, error } = await fetchRemoteIds(localHouseholdId);
+        const { ids, error } = await fetchRemoteIds("stock_items", localHouseholdId);
         if (error) {
           remoteState = { kind: "erreur", message: error };
           raison = `snapshot distant indisponible : ${error}`;
@@ -527,6 +567,116 @@ export default function DiagnosticPage() {
         };
       });
 
+      // 6. Analyse dédiée des dead_letter shopping_list.
+      const signaturesShoppingList = construireSignatures(queue, "shopping_list");
+
+      // Snapshot distant de shopping_list — SELECT sur la seule colonne id.
+      // Même garde que pour stock_items : sans snapshot exploitable, on ne
+      // conclut RIEN sur la présence distante plutôt que de conclure à tort.
+      let idsCoursesDistants: Set<string> | null = null;
+      let raisonCourses = "";
+      if (remoteState.kind === "ok" && localHouseholdId) {
+        const { ids, error } = await fetchRemoteIds("shopping_list", localHouseholdId);
+        if (error) raisonCourses = `snapshot shopping_list indisponible : ${error}`;
+        else idsCoursesDistants = ids;
+      } else {
+        raisonCourses = raison || "snapshot distant indisponible";
+      }
+
+      const entreesCourses = queue.filter((entry) => entry.table === "shopping_list");
+      const entreesParArticle = new Map<string, QueueRow[]>();
+      for (const entry of entreesCourses) {
+        const rowId = entry.payload?.id;
+        if (typeof rowId !== "string") continue;
+        const liste = entreesParArticle.get(rowId) ?? [];
+        liste.push(entry);
+        entreesParArticle.set(rowId, liste);
+      }
+
+      const deadLetterParArticle = new Map<string, number>();
+      for (const entry of entreesCourses) {
+        if (entry.status !== "dead_letter") continue;
+        const rowId = entry.payload?.id;
+        if (typeof rowId === "string") {
+          deadLetterParArticle.set(rowId, (deadLetterParArticle.get(rowId) ?? 0) + 1);
+        }
+      }
+
+      const lignesCoursesParId = new Map<string, LocalRow>();
+      for (const ligne of lignesCourses) {
+        if (typeof ligne.id === "string") lignesCoursesParId.set(ligne.id, ligne);
+      }
+
+      const detailShoppingList: ShoppingDetail[] = Array.from(deadLetterParArticle.keys())
+        .map((articleId) => {
+          const entrees = [...(entreesParArticle.get(articleId) ?? [])].sort((a, b) =>
+            isoOf(a.created_at).localeCompare(isoOf(b.created_at))
+          );
+          const derniere = entrees[entrees.length - 1];
+          const locale = lignesCoursesParId.get(articleId);
+          // Les payloads ne servent qu'à compter les versions successives ;
+          // aucun n'est affiché.
+          const empreintes = new Set(entrees.map((entry) => JSON.stringify(entry.payload ?? {})));
+          return {
+            id: short(articleId),
+            nom: typeof locale?.["item_name"] === "string" ? (locale["item_name"] as string) : "(nom indisponible)",
+            entreesFile: entrees.length,
+            statuts: sortedUnique(
+              entrees.map((entry) => (typeof entry.status === "string" ? entry.status : "?"))
+            ),
+            operations: sortedUnique(
+              entrees.map((entry) => (typeof entry.op === "string" ? entry.op : "?"))
+            ),
+            createdOldest: isoOf(entrees[0]?.created_at) || "—",
+            createdNewest: isoOf(derniere?.created_at) || "—",
+            dernierMessage: derniere ? redact(derniere.last_error) : "(aucune entrée en file)",
+            payloadsMultiples: empreintes.size > 1,
+            payloadsDistincts: empreintes.size,
+            ligneLocalePresente: Boolean(locale),
+            aCreatedAt: Boolean(locale?.["created_at"]),
+            aUpdatedAt: Boolean(locale?.["updated_at"]),
+            presentDansSnapshot: idsCoursesDistants ? idsCoursesDistants.has(articleId) : null,
+          };
+        })
+        .sort((a, b) => b.entreesFile - a.entreesFile);
+
+      const comptesCourses = Array.from(deadLetterParArticle.values());
+      const operationsCourses = { upsert: 0, delete: 0 };
+      for (const entry of entreesCourses) {
+        if (entry.op === "upsert") operationsCourses.upsert++;
+        else if (entry.op === "delete") operationsCourses.delete++;
+      }
+      const absentsSnapshot = idsCoursesDistants
+        ? lignesCourses.filter(
+            (ligne) =>
+              typeof ligne.id === "string" &&
+              ligne.household_id === localHouseholdId &&
+              !idsCoursesDistants.has(ligne.id)
+          )
+        : null;
+
+      const resumeShoppingList: ShoppingResume = {
+        articlesUneSeuleDeadLetter: comptesCourses.filter((n) => n === 1).length,
+        articlesPlusieursDeadLetter: comptesCourses.filter((n) => n > 1).length,
+        maxEntreesParArticle: Math.max(
+          0,
+          ...Array.from(entreesParArticle.values(), (liste) => liste.length)
+        ),
+        operations: operationsCourses,
+        articlesAvecLigneLocale: Array.from(deadLetterParArticle.keys()).filter((id) =>
+          lignesCoursesParId.has(id)
+        ).length,
+        articlesSansLigneLocale: Array.from(deadLetterParArticle.keys()).filter(
+          (id) => !lignesCoursesParId.has(id)
+        ).length,
+        articlesAbsentsDuSnapshot: absentsSnapshot ? absentsSnapshot.length : null,
+        absentsSnapshotSansDeadLetter: absentsSnapshot
+          ? absentsSnapshot.filter(
+              (ligne) => !deadLetterParArticle.has(ligne.id as string)
+            ).length
+          : null,
+      };
+
       const pullMeta = meta.find((entry) => entry.household_id === localHouseholdId);
 
       if (annule) return;
@@ -566,6 +716,10 @@ export default function DiagnosticPage() {
         absentsDuSnapshot: { disponible, raison, nombre: absents.length, lignes: absents },
         reparations,
         signaturesDeadLetter,
+        signaturesShoppingList,
+        detailShoppingList,
+        resumeShoppingList,
+        snapshotShoppingList: { disponible: idsCoursesDistants !== null, raison: raisonCourses },
         detailAbsents,
         resume,
       });
@@ -838,6 +992,128 @@ export default function DiagnosticPage() {
               )}
             </div>
           ))
+        )}
+      </section>
+
+      <section className={carte}>
+        <h2 className="font-medium text-sm">
+          Signatures d&apos;erreur — dead_letter shopping_list
+        </h2>
+        {report.signaturesShoppingList.length === 0 ? (
+          <p className="text-sm opacity-60">Aucune entrée dead_letter sur shopping_list.</p>
+        ) : (
+          <>
+            <p className="text-xs opacity-60">
+              {report.signaturesShoppingList.length} signature(s) distincte(s). Identifiants et
+              adresses caviardés, messages tronqués à {MESSAGE_MAX} caractères.
+            </p>
+            {report.signaturesShoppingList.map((signature, index) => (
+              <div
+                key={`${signature.message}-${index}`}
+                className="rounded-lg border border-black/10 dark:border-white/10 p-2 mt-2 space-y-1"
+              >
+                <p className="text-xs font-mono break-words whitespace-pre-wrap">
+                  {signature.message}
+                </p>
+                <div className="grid grid-cols-2 gap-x-3 text-xs opacity-70">
+                  <span>entrées</span>
+                  <strong className="text-right">{signature.entrees}</strong>
+                  <span>articles distincts</span>
+                  <strong className="text-right">{signature.produitsDistincts}</strong>
+                  <span>attempts</span>
+                  <span className="text-right">{signature.attempts.join(", ")}</span>
+                  <span>opérations</span>
+                  <span className="text-right">{signature.operations.join(", ")}</span>
+                  <span>plus ancienne</span>
+                  <span className="text-right">{signature.oldest}</span>
+                  <span>plus récente</span>
+                  <span className="text-right">{signature.newest}</span>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </section>
+
+      <section className={carte}>
+        <h2 className="font-medium text-sm">Résumé — shopping_list</h2>
+        {(
+          [
+            ["articles avec 1 seule dead_letter", report.resumeShoppingList.articlesUneSeuleDeadLetter],
+            ["articles avec plusieurs dead_letter", report.resumeShoppingList.articlesPlusieursDeadLetter],
+            ["max d'entrées pour un même article", report.resumeShoppingList.maxEntreesParArticle],
+            ["entrées upsert", report.resumeShoppingList.operations.upsert],
+            ["entrées delete", report.resumeShoppingList.operations.delete],
+            ["articles avec ligne locale", report.resumeShoppingList.articlesAvecLigneLocale],
+            ["articles SANS ligne locale", report.resumeShoppingList.articlesSansLigneLocale],
+            ["articles absents du snapshot", report.resumeShoppingList.articlesAbsentsDuSnapshot],
+            ["absents du snapshot SANS dead_letter", report.resumeShoppingList.absentsSnapshotSansDeadLetter],
+          ] as const
+        ).map(([label, valeur]) => (
+          <div key={label} className={ligne}>
+            <span className="opacity-70">{label}</span>
+            <strong>{valeur === null ? "indisponible" : valeur}</strong>
+          </div>
+        ))}
+        {!report.snapshotShoppingList.disponible && (
+          <p className="text-xs rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 px-2 py-1 mt-1">
+            Comparaison distante impossible — {report.snapshotShoppingList.raison}. Aucune
+            conclusion n&apos;est tirée sur la présence des articles côté Supabase.
+          </p>
+        )}
+      </section>
+
+      <section className={carte}>
+        <h2 className="font-medium text-sm">Détail par article — dead_letter shopping_list</h2>
+        {report.detailShoppingList.length === 0 ? (
+          <p className="text-sm opacity-60">Aucun article concerné.</p>
+        ) : (
+          <div className="space-y-2">
+            {report.detailShoppingList.map((detail, index) => (
+              <div
+                key={`${detail.id}-${index}`}
+                className="rounded-lg border border-black/10 dark:border-white/10 p-2 space-y-1"
+              >
+                <div className="flex justify-between gap-2 text-sm">
+                  <span className="font-medium truncate">{detail.nom}</span>
+                  <code className="text-xs shrink-0">{detail.id}</code>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 text-xs opacity-70">
+                  <span>entrées en file</span>
+                  <strong className="text-right">{detail.entreesFile}</strong>
+                  <span>statuts</span>
+                  <span className="text-right">{detail.statuts.join(", ") || "—"}</span>
+                  <span>opérations</span>
+                  <span className="text-right">{detail.operations.join(", ") || "—"}</span>
+                  <span>1re mise en file</span>
+                  <span className="text-right">{detail.createdOldest}</span>
+                  <span>dernière</span>
+                  <span className="text-right">{detail.createdNewest}</span>
+                  <span>payloads successifs</span>
+                  <span className="text-right">
+                    {detail.payloadsMultiples ? `oui (${detail.payloadsDistincts})` : "non"}
+                  </span>
+                  <span>ligne locale</span>
+                  <span className="text-right">{detail.ligneLocalePresente ? "présente" : "ABSENTE"}</span>
+                  <span>created_at local</span>
+                  <span className="text-right">{detail.aCreatedAt ? "oui" : "non"}</span>
+                  <span>updated_at local</span>
+                  <span className="text-right">{detail.aUpdatedAt ? "oui" : "non"}</span>
+                  <span>dans le snapshot Supabase</span>
+                  <span className="text-right">
+                    {detail.presentDansSnapshot === null
+                      ? "indéterminé"
+                      : detail.presentDansSnapshot
+                        ? "présent"
+                        : "absent"}
+                  </span>
+                </div>
+                <p className="text-xs font-mono opacity-60 break-words whitespace-pre-wrap">
+                  {detail.dernierMessage}
+                </p>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 

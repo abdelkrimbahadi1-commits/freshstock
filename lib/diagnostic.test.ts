@@ -287,3 +287,71 @@ describe("file de synchronisation shopping_list", () => {
     }
   });
 });
+
+describe("analyse des dead_letter shopping_list", () => {
+  it("29. produit les signatures distinctes via la fonction partagée", () => {
+    expect(CODE).toContain('construireSignatures(queue, "shopping_list")');
+    expect(CODE).toContain('construireSignatures(queue, "stock_items")');
+    // Une seule implémentation : le tri ne peut pas diverger d'une table à
+    // l'autre.
+    expect((CODE.match(/function construireSignatures\(/g) ?? [])).toHaveLength(1);
+  });
+
+  it("30. expose le détail par article avec tous les champs demandés", () => {
+    for (const champ of [
+      "detailShoppingList",
+      "entreesFile",
+      "createdOldest",
+      "createdNewest",
+      "dernierMessage",
+      "payloadsMultiples",
+      "ligneLocalePresente",
+      "aCreatedAt",
+      "aUpdatedAt",
+      "presentDansSnapshot",
+    ]) {
+      expect(CODE).toContain(champ);
+    }
+  });
+
+  it("31. expose le résumé shopping_list demandé", () => {
+    for (const champ of [
+      "articlesUneSeuleDeadLetter",
+      "articlesPlusieursDeadLetter",
+      "maxEntreesParArticle",
+      "articlesAvecLigneLocale",
+      "articlesSansLigneLocale",
+      "articlesAbsentsDuSnapshot",
+      "absentsSnapshotSansDeadLetter",
+    ]) {
+      expect(CODE).toContain(champ);
+    }
+  });
+
+  it("32. ne conclut RIEN sur la présence distante sans snapshot exploitable", () => {
+    // presentDansSnapshot vaut null, et le résumé affiche « indisponible »
+    // plutôt qu'un zéro trompeur.
+    expect(CODE).toContain("presentDansSnapshot: idsCoursesDistants ? idsCoursesDistants.has(articleId) : null");
+    expect(CODE).toContain('valeur === null ? "indisponible" : valeur');
+    expect(CODE).toContain("snapshotShoppingList");
+  });
+
+  it("33. n'expose ni payload, ni identifiant complet, ni household_id, ni added_by", () => {
+    // Les payloads ne servent qu'à compter les versions successives.
+    expect(CODE).toContain("JSON.stringify(entry.payload");
+    // Bornes de mot : `detail.payloadsMultiples` est un COMPTEUR légitime, il
+    // ne doit pas être confondu avec l'exposition d'un payload.
+    expect(CODE).not.toMatch(/detail\.(payload|household_id|added_by)/);
+    // L'identifiant d'article est systématiquement tronqué.
+    expect(CODE).toContain("id: short(articleId)");
+    // Seule la PRÉSENCE des horodatages locaux est exposée.
+    expect(CODE).toContain('aCreatedAt: Boolean(locale?.["created_at"])');
+    expect(CODE).toContain('aUpdatedAt: Boolean(locale?.["updated_at"])');
+  });
+
+  it("34. le snapshot distant shopping_list ne lit que la colonne id", () => {
+    expect(CODE).toContain('fetchRemoteIds("shopping_list", localHouseholdId)');
+    const selects = CODE.match(/\.select\(["'][^"']*["']\)/g) ?? [];
+    for (const select of selects) expect(select).not.toMatch(/\*/);
+  });
+});
