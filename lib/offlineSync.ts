@@ -52,6 +52,21 @@ function errorMessage(error: unknown): string {
   return message ?? "Erreur inconnue";
 }
 
+async function isStaleUpsert(entry: SyncQueueEntry): Promise<boolean> {
+  if (entry.op !== "upsert") return false;
+  const rowId = entry.payload.id;
+  if (typeof rowId !== "string" || rowId.length === 0) return false;
+  const payloadUpdatedAt = entry.payload.updated_at;
+  if (typeof payloadUpdatedAt !== "string") return false;
+
+  const local = await db.table<Record<string, unknown>, string>(entry.table).get(rowId);
+  if (!local) return true;
+
+  const localUpdatedAt = local.updated_at;
+  if (typeof localUpdatedAt !== "string") return false;
+  return localUpdatedAt !== payloadUpdatedAt;
+}
+
 export async function queueWrite(
   table: SyncQueueEntry["table"],
   op: "upsert" | "delete",
@@ -260,6 +275,10 @@ async function runFlush(): Promise<void> {
 
   for (const entry of eligible) {
     if (entry.id === undefined) continue;
+    if (await isStaleUpsert(entry)) {
+      await db.sync_queue.delete(entry.id);
+      continue;
+    }
     await db.sync_queue.update(entry.id, { status: SYNC_STATUS.PROCESSING, updated_at: nowIso() });
 
     try {

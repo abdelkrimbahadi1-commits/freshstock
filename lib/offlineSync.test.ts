@@ -43,6 +43,8 @@ function makeFakeSupabase(handler: Handler, authed = true) {
 }
 
 beforeEach(async () => {
+  await db.stock_items.clear();
+  await db.shopping_list.clear();
   await db.sync_queue.clear();
   vi.mocked(createClient).mockReset();
 });
@@ -240,6 +242,100 @@ describe("flushSyncQueue", () => {
     await waitFor(() => calls.length > 0);
     expect(calls).toEqual(["feedback:avis-race"]);
     await waitFor(async () => (await db.sync_queue.count()) === 0);
+  });
+
+  it("ne rejoue pas un ancien upsert retry_pending après un upsert local plus récent", async () => {
+    const calls: Record<string, unknown>[] = [];
+    vi.mocked(createClient).mockReturnValue(
+      makeFakeSupabase((_table, _op, payload) => {
+        calls.push(payload);
+        return { error: null };
+      }) as never
+    );
+
+    await db.stock_items.put({
+      id: "stock-stale",
+      household_id: "household-1",
+      product_id: null,
+      barcode: null,
+      name: "Lait",
+      category: "produit_laitier",
+      quantity: 2,
+      unit: "L",
+      location: "frigo",
+      purchase_date: "2026-08-01",
+      expiry_date: "2026-08-10",
+      price: null,
+      added_by: "user-1",
+      status: "in_stock",
+      updated_at: "2026-08-01T10:05:00.000Z",
+    });
+    await db.sync_queue.add({
+      table: "stock_items",
+      op: "upsert",
+      payload: { id: "stock-stale", quantity: 1, updated_at: "2026-08-01T10:00:00.000Z" },
+      created_at: "2026-08-01T10:00:00.000Z",
+      updated_at: "2026-08-01T10:01:00.000Z",
+      status: SYNC_STATUS.RETRY_PENDING,
+      attempts: 1,
+      last_error: "network",
+      next_retry_at: new Date(0).toISOString(),
+    });
+    await db.sync_queue.add({
+      table: "stock_items",
+      op: "upsert",
+      payload: { id: "stock-stale", quantity: 2, updated_at: "2026-08-01T10:05:00.000Z" },
+      created_at: "2026-08-01T10:05:00.000Z",
+      updated_at: "2026-08-01T10:05:00.000Z",
+      status: SYNC_STATUS.PENDING,
+      attempts: 0,
+      last_error: null,
+      next_retry_at: "2026-08-01T10:05:00.000Z",
+    });
+
+    await flushSyncQueue();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ id: "stock-stale", quantity: 2 });
+    expect(await db.sync_queue.count()).toBe(0);
+  });
+
+  it("ne ressuscite pas un ancien upsert retry_pending quand un delete local plus récent existe", async () => {
+    const calls: string[] = [];
+    vi.mocked(createClient).mockReturnValue(
+      makeFakeSupabase((table, op, payload) => {
+        calls.push(`${table}:${op}:${payload.id}`);
+        return { error: null };
+      }) as never
+    );
+
+    await db.sync_queue.add({
+      table: "shopping_list",
+      op: "upsert",
+      payload: { id: "shopping-deleted", item_name: "Lait", updated_at: "2026-08-01T10:00:00.000Z" },
+      created_at: "2026-08-01T10:00:00.000Z",
+      updated_at: "2026-08-01T10:01:00.000Z",
+      status: SYNC_STATUS.RETRY_PENDING,
+      attempts: 1,
+      last_error: "network",
+      next_retry_at: new Date(0).toISOString(),
+    });
+    await db.sync_queue.add({
+      table: "shopping_list",
+      op: "delete",
+      payload: { id: "shopping-deleted" },
+      created_at: "2026-08-01T10:05:00.000Z",
+      updated_at: "2026-08-01T10:05:00.000Z",
+      status: SYNC_STATUS.PENDING,
+      attempts: 0,
+      last_error: null,
+      next_retry_at: "2026-08-01T10:05:00.000Z",
+    });
+
+    await flushSyncQueue();
+
+    expect(calls).toEqual(["shopping_list:delete:shopping-deleted"]);
+    expect(await db.sync_queue.count()).toBe(0);
   });
 });
 
