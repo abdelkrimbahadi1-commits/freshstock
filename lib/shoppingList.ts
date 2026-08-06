@@ -4,7 +4,7 @@ import { db } from "./db";
 import { localDayIso } from "./format";
 import { translate } from "./i18n/dictionaries";
 import type { Locale } from "./i18n/locale";
-import { queueWrite } from "./offlineSync";
+import { enqueueWrite, transactAndQueue } from "./offlineSync";
 import { getHouseholdId } from "./session";
 import type { RecipeIngredient, ShoppingListItem } from "./types";
 
@@ -53,8 +53,10 @@ export async function addShoppingListItem(
           recipe_name: Array.from(names).join(", "),
           updated_at: new Date().toISOString(),
         };
-        await db.shopping_list.put(updated);
-        await queueWrite("shopping_list", "upsert", updated as unknown as Record<string, unknown>);
+        await transactAndQueue(["shopping_list"], async () => {
+          await db.shopping_list.put(updated);
+          await enqueueWrite("shopping_list", "upsert", updated as unknown as Record<string, unknown>);
+        });
       }
     }
     return;
@@ -77,8 +79,10 @@ export async function addShoppingListItem(
     created_at: maintenant,
     updated_at: maintenant,
   };
-  await db.shopping_list.put(entry);
-  await queueWrite("shopping_list", "upsert", entry as unknown as Record<string, unknown>);
+  await transactAndQueue(["shopping_list"], async () => {
+    await db.shopping_list.put(entry);
+    await enqueueWrite("shopping_list", "upsert", entry as unknown as Record<string, unknown>);
+  });
 }
 
 export async function addMissingIngredients(
@@ -98,9 +102,11 @@ export async function addMissingIngredients(
 }
 
 export async function toggleShoppingListItem(id: string, checked: boolean): Promise<void> {
-  await db.shopping_list.update(id, { checked, updated_at: new Date().toISOString() });
-  const item = await db.shopping_list.get(id);
-  if (item) await queueWrite("shopping_list", "upsert", item as unknown as Record<string, unknown>);
+  await transactAndQueue(["shopping_list"], async () => {
+    await db.shopping_list.update(id, { checked, updated_at: new Date().toISOString() });
+    const item = await db.shopping_list.get(id);
+    if (item) await enqueueWrite("shopping_list", "upsert", item as unknown as Record<string, unknown>);
+  });
 }
 
 export async function updateShoppingListItemQuantity(
@@ -108,14 +114,18 @@ export async function updateShoppingListItemQuantity(
   quantity: number,
   unit: string
 ): Promise<void> {
-  await db.shopping_list.update(id, { quantity, unit, updated_at: new Date().toISOString() });
-  const item = await db.shopping_list.get(id);
-  if (item) await queueWrite("shopping_list", "upsert", item as unknown as Record<string, unknown>);
+  await transactAndQueue(["shopping_list"], async () => {
+    await db.shopping_list.update(id, { quantity, unit, updated_at: new Date().toISOString() });
+    const item = await db.shopping_list.get(id);
+    if (item) await enqueueWrite("shopping_list", "upsert", item as unknown as Record<string, unknown>);
+  });
 }
 
 export async function removeShoppingListItem(id: string): Promise<void> {
-  await db.shopping_list.delete(id);
-  await queueWrite("shopping_list", "delete", { id });
+  await transactAndQueue(["shopping_list"], async () => {
+    await db.shopping_list.delete(id);
+    await enqueueWrite("shopping_list", "delete", { id });
+  });
 }
 
 // Identifiant TECHNIQUE du groupe des articles sans date exploitable. Ce n'est

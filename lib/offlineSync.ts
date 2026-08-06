@@ -57,8 +57,17 @@ export async function queueWrite(
   op: "upsert" | "delete",
   payload: Record<string, unknown>
 ) {
+  await enqueueWrite(table, op, payload);
+  triggerFlushIfOnline();
+}
+
+function buildQueueEntry(
+  table: SyncQueueEntry["table"],
+  op: "upsert" | "delete",
+  payload: Record<string, unknown>
+): SyncQueueEntry {
   const timestamp = nowIso();
-  await db.sync_queue.add({
+  return {
     table,
     op,
     payload,
@@ -68,10 +77,30 @@ export async function queueWrite(
     attempts: 0,
     last_error: null,
     next_retry_at: timestamp,
-  });
+  };
+}
+
+export async function enqueueWrite(
+  table: SyncQueueEntry["table"],
+  op: "upsert" | "delete",
+  payload: Record<string, unknown>
+) {
+  await db.sync_queue.add(buildQueueEntry(table, op, payload));
+}
+
+export function triggerFlushIfOnline() {
   if (typeof navigator !== "undefined" && navigator.onLine) {
     void flushSyncQueue();
   }
+}
+
+export async function transactAndQueue<T>(
+  stores: string[],
+  fn: () => Promise<T>
+): Promise<T> {
+  const result = await db.transaction("rw", [...stores, "sync_queue"], fn);
+  triggerFlushIfOnline();
+  return result;
 }
 
 // Verrou par onglet (vérif synchrone bon marché, évite même de tenter le

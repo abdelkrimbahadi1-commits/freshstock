@@ -2,7 +2,7 @@
 
 import { db } from "./db";
 import { isoDateInDays, todayIso } from "./format";
-import { queueWrite } from "./offlineSync";
+import { enqueueWrite, transactAndQueue } from "./offlineSync";
 import { getEffectiveUserId, getHouseholdId } from "./session";
 import {
   DEFAULT_SHELF_LIFE_DAYS,
@@ -41,21 +41,27 @@ export async function addStockItem(input: NewStockItemInput): Promise<StockItem>
     status: "in_stock",
     updated_at: new Date().toISOString(),
   };
-  await db.stock_items.put(item);
-  await queueWrite("stock_items", "upsert", item as unknown as Record<string, unknown>);
+  await transactAndQueue(["stock_items"], async () => {
+    await db.stock_items.put(item);
+    await enqueueWrite("stock_items", "upsert", item as unknown as Record<string, unknown>);
+  });
   return item;
 }
 
 export async function updateExpiryDate(id: string, expiry_date: string) {
-  await db.stock_items.update(id, { expiry_date, updated_at: new Date().toISOString() });
-  const item = await db.stock_items.get(id);
-  if (item) await queueWrite("stock_items", "upsert", item as unknown as Record<string, unknown>);
+  await transactAndQueue(["stock_items"], async () => {
+    await db.stock_items.update(id, { expiry_date, updated_at: new Date().toISOString() });
+    const item = await db.stock_items.get(id);
+    if (item) await enqueueWrite("stock_items", "upsert", item as unknown as Record<string, unknown>);
+  });
 }
 
 export async function setStockItemStatus(id: string, status: "consumed" | "discarded") {
-  await db.stock_items.update(id, { status, updated_at: new Date().toISOString() });
-  const item = await db.stock_items.get(id);
-  if (item) await queueWrite("stock_items", "upsert", item as unknown as Record<string, unknown>);
+  await transactAndQueue(["stock_items"], async () => {
+    await db.stock_items.update(id, { status, updated_at: new Date().toISOString() });
+    const item = await db.stock_items.get(id);
+    if (item) await enqueueWrite("stock_items", "upsert", item as unknown as Record<string, unknown>);
+  });
 }
 
 export async function listActiveStock(): Promise<StockItem[]> {
