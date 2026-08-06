@@ -51,6 +51,10 @@ export const DISCARD_REASON = {
   // `stock_items_all_members` (42501) dès le premier essai. Voir
   // lib/stockRlsRepair.ts.
   STOCK_ITEMS_RLS_BEFORE_HOUSEHOLD_MEMBERSHIP: "stock_items_rls_before_household_membership",
+  // Même cause, table shopping_list : écritures poussées le 22 juillet 2026,
+  // alors que household_id était encore un identifiant local. Voir
+  // lib/shoppingListRlsRepair.ts.
+  SHOPPING_LIST_RLS_BEFORE_HOUSEHOLD_MEMBERSHIP: "shopping_list_rls_before_household_membership",
 } as const;
 
 export type DiscardReason = (typeof DISCARD_REASON)[keyof typeof DISCARD_REASON];
@@ -151,6 +155,23 @@ export interface StockRlsRepairReport {
   skippedOtherSignature: number; // dead_letter stock_items d'une AUTRE cause, intactes
 }
 
+export interface ShoppingListRlsRepairReport {
+  inspectedDeadLetter: number; // entrées dead_letter shopping_list examinées
+  matchedEntries: number; // retenues par la signature RLS exacte
+  articlesDistincts: number; // identifiants d'article distincts parmi elles
+  archivedEntries: number; // archivées dans sync_queue_discarded
+  alreadyArchived: number; // archive déjà présente -> aucun doublon créé
+  articlesAlreadyRemote: number; // déjà présents dans Supabase -> archive seule
+  requeuedArticles: number; // absents à distance -> une seule pending par article
+  discardedNoLocalRow: number; // ligne locale disparue -> aucune résurrection
+  skippedOtherSignature: number; // dead_letter d'une AUTRE cause, intactes
+  skippedMissingAuth: number; // session absente ou incohérente -> aucune mutation
+  skippedHouseholdMismatch: number; // foyer non confirmé -> aucune mutation
+}
+
+// Une réparation par table, chacune avec ses propres compteurs.
+export type LocalRepairReport = StockRlsRepairReport | ShoppingListRlsRepairReport;
+
 export interface LocalRepairRecord {
   id: string;
   status: RepairStatus;
@@ -158,7 +179,7 @@ export interface LocalRepairRecord {
   updated_at: string;
   completed_at: string | null;
   last_error: string | null;
-  report: StockRlsRepairReport | null;
+  report: LocalRepairReport | null;
 }
 
 // --- Récupération du passif dead_letter « shopping_list.updated_at » --------

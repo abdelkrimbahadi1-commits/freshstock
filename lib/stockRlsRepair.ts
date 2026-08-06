@@ -112,12 +112,21 @@ export async function repairStockItemsRlsDeadLetters(
   const probleme = checkRepairPreconditions(input);
   if (probleme) return { ok: false, reason: "precondition", message: probleme };
 
+  // `local_repairs` porte desormais les rapports de PLUSIEURS reparations :
+  // on verifie explicitement que celui-ci est bien un rapport stock_items
+  // avant de le renvoyer, plutot que de supposer sa forme.
+  const estRapportStock = (rapport: unknown): rapport is StockRlsRepairReport =>
+    typeof rapport === "object" &&
+    rapport !== null &&
+    "produits" in rapport &&
+    "requeuedProducts" in rapport;
+
   const existant = await db.local_repairs.get(STOCK_RLS_REPAIR_ID);
   // SEUL `completed` court-circuite. `in_progress` (fermeture ou crash entre le
   // marqueur et la transaction) et `failed` retombent volontairement dans le
   // corps ci-dessous et sont rejoués : l'idempotence structurelle empêche tout
   // doublon, donc un rejeu est toujours sûr.
-  if (existant?.status === REPAIR_STATUS.COMPLETED && existant.report) {
+  if (existant?.status === REPAIR_STATUS.COMPLETED && estRapportStock(existant.report)) {
     return { ok: true, skipped: true, report: existant.report };
   }
 

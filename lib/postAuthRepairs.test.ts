@@ -5,8 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./stockRlsRepair", () => ({
   repairStockItemsRlsDeadLetters: vi.fn(),
 }));
+vi.mock("./shoppingListRlsRepair", () => ({
+  repairShoppingListRlsDeadLetters: vi.fn(),
+}));
 
 import { repairStockItemsRlsDeadLetters } from "./stockRlsRepair";
+import { repairShoppingListRlsDeadLetters } from "./shoppingListRlsRepair";
 import { runPostAuthRepairs } from "./postAuthRepairs";
 
 const HOUSEHOLD = "11111111-1111-4111-8111-111111111111";
@@ -25,8 +29,11 @@ const DIAGNOSTIC_SOURCE = readFileSync(
   "utf8"
 );
 
+const succes = { ok: true, skipped: false, report: {} } as never;
+
 beforeEach(() => {
-  vi.mocked(repairStockItemsRlsDeadLetters).mockReset();
+  vi.mocked(repairStockItemsRlsDeadLetters).mockReset().mockResolvedValue(succes);
+  vi.mocked(repairShoppingListRlsDeadLetters).mockReset().mockResolvedValue(succes);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -43,6 +50,23 @@ describe("runPostAuthRepairs — ne bloque jamais le flux principal", () => {
 
     expect(repairStockItemsRlsDeadLetters).toHaveBeenCalledWith(input);
     expect(outcome.stockItemsRls).toMatchObject({ ok: true, skipped: false });
+  });
+
+  it("1bis. déclenche AUSSI la réparation shopping_list, avec les mêmes paramètres", async () => {
+    const outcome = await runPostAuthRepairs(input);
+
+    expect(repairShoppingListRlsDeadLetters).toHaveBeenCalledWith(input);
+    expect(outcome.shoppingListRls).toMatchObject({ ok: true });
+  });
+
+  it("1ter. un échec shopping_list ne lève pas et n'empêche pas la réparation stock_items", async () => {
+    vi.mocked(repairShoppingListRlsDeadLetters).mockRejectedValue(new Error("boum courses"));
+
+    const outcome = await runPostAuthRepairs(input);
+
+    expect(outcome.stockItemsRls).toMatchObject({ ok: true });
+    expect(outcome.shoppingListRls).toMatchObject({ ok: false, reason: "transaction" });
+    expect(console.error).toHaveBeenCalled();
   });
 
   it("2. un échec de précondition ne lève pas et reste exploitable", async () => {
@@ -76,6 +100,7 @@ describe("branchement dans lib/household.ts", () => {
     expect(appels).toHaveLength(3);
     // Aucune duplication de la logique de réparation dans household.ts.
     expect(HOUSEHOLD_CODE).not.toContain("repairStockItemsRlsDeadLetters");
+    expect(HOUSEHOLD_CODE).not.toContain("repairShoppingListRlsDeadLetters");
     expect(HOUSEHOLD_CODE).not.toContain("local_repairs");
   });
 

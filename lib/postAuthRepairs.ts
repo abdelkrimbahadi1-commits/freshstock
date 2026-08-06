@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  repairShoppingListRlsDeadLetters,
+  type ShoppingListRlsRepairOutcome,
+} from "./shoppingListRlsRepair";
 import { repairStockItemsRlsDeadLetters, type StockRlsRepairOutcome } from "./stockRlsRepair";
 
 // Point d'entrée UNIQUE des réparations locales déclenchées après
@@ -24,6 +28,7 @@ export interface PostAuthRepairsInput {
 
 export interface PostAuthRepairsOutcome {
   stockItemsRls: StockRlsRepairOutcome;
+  shoppingListRls: ShoppingListRlsRepairOutcome;
 }
 
 export async function runPostAuthRepairs({
@@ -47,5 +52,19 @@ export async function runPostAuthRepairs({
     );
   }
 
-  return { stockItemsRls };
+  let shoppingListRls: ShoppingListRlsRepairOutcome;
+  try {
+    shoppingListRls = await repairShoppingListRlsDeadLetters({ householdId, authenticatedUserId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    shoppingListRls = { ok: false, reason: "transaction", message };
+  }
+
+  if (!shoppingListRls.ok) {
+    console.error(
+      `[postAuthRepairs] réparation shopping_list non appliquée (${shoppingListRls.reason}) : ${shoppingListRls.message}`
+    );
+  }
+
+  return { stockItemsRls, shoppingListRls };
 }
