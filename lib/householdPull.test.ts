@@ -115,6 +115,7 @@ function shoppingRow(
     source: "manual",
     recipe_name: null,
     checked: false,
+    purchase_date: null,
     created_at: "2026-08-02T10:00:00.000Z",
     updated_at: "2026-08-02T10:00:00.000Z",
     ...overrides,
@@ -175,6 +176,22 @@ describe("pullHouseholdData", () => {
 
     expect(result.perTable.shopping_list).toMatchObject({ fetched: 1, created: 0, updated: 1 });
     expect((await db.shopping_list.get("sl1"))?.checked).toBe(true);
+  });
+
+  it("conserve purchase_date distant sur shopping_list", async () => {
+    await db.shopping_list.put(shoppingRow("sl1", HOUSEHOLD_ID, { checked: false, purchase_date: null }));
+    const remoteShopping = shoppingRow("sl1", HOUSEHOLD_ID, {
+      checked: true,
+      purchase_date: "2026-08-10",
+      updated_at: "2026-08-12T11:00:00.000Z",
+    });
+    vi.mocked(createClient).mockReturnValue(
+      makeFakeSupabase({ tableData: { shopping_list: [remoteShopping] } }) as never
+    );
+
+    await pullHouseholdData({ householdId: HOUSEHOLD_ID, authenticatedUserId: AUTH_USER });
+
+    expect((await db.shopping_list.get("sl1"))?.purchase_date).toBe("2026-08-10");
   });
 
   it("protège une ligne locale avec une écriture active dans sync_queue (non écrasée)", async () => {

@@ -53,6 +53,7 @@ export async function addShoppingListItem(
         source: "manual",
         recipe_name: null,
         checked: false,
+        purchase_date: null,
         created_at: maintenant,
         updated_at: maintenant,
       };
@@ -89,6 +90,7 @@ export async function addShoppingListItem(
     source,
     recipe_name: recipeName,
     checked: false,
+    purchase_date: null,
     // Posé à la création. Les mutations ordinaires suivantes (coche/décoche,
     // changement de quantité, ajout d'une recette à un article déjà présent)
     // ne le réécrivent pas.
@@ -160,9 +162,21 @@ export async function addMissingIngredients(
   }
 }
 
-export async function toggleShoppingListItem(id: string, checked: boolean): Promise<void> {
+function todayLocalIso(): string {
+  return localDayIso(new Date()) as string;
+}
+
+export async function toggleShoppingListItem(
+  id: string,
+  checked: boolean,
+  purchaseDate?: string | null
+): Promise<void> {
   await transactAndQueue(["shopping_list"], async () => {
-    await db.shopping_list.update(id, { checked, updated_at: new Date().toISOString() });
+    await db.shopping_list.update(id, {
+      checked,
+      purchase_date: checked ? (purchaseDate ?? todayLocalIso()) : null,
+      updated_at: new Date().toISOString(),
+    });
     const item = await db.shopping_list.get(id);
     if (item) await enqueueWrite("shopping_list", "upsert", item as unknown as Record<string, unknown>);
   });
@@ -251,6 +265,14 @@ export interface ShoppingListDayGroup {
   items: ShoppingListItem[];
 }
 
+export type PurchasedDayGroupKey = "today" | "yesterday" | "older" | "unknown";
+
+export interface PurchasedShoppingListDayGroup {
+  key: PurchasedDayGroupKey;
+  dayIso: string; // jour metier "YYYY-MM-DD", ou NO_DATE_GROUP
+  items: ShoppingListItem[];
+}
+
 // Regroupe par journée calendaire locale et trie du plus récent au plus ancien,
 // groupes comme articles. Fonction PURE : `now` est injecté pour rester
 // testable au changement de mois et d'année.
@@ -290,5 +312,41 @@ export function groupShoppingListByDay(
   return [
     ...groupesDates,
     { key: "undated", dayIso: NO_DATE_GROUP, items: [...sansDate].sort(compareShoppingItemsAlphabetically) },
+  ];
+}
+
+export function groupPurchasedShoppingListByPurchaseDate(
+  items: ShoppingListItem[],
+  now: Date = new Date()
+): PurchasedShoppingListDayGroup[] {
+  const aujourdHui = localDayIso(now);
+  const veille = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const hier = localDayIso(veille);
+
+  const parJour = new Map<string, ShoppingListItem[]>();
+  const sansDate: ShoppingListItem[] = [];
+
+  for (const item of items) {
+    if (!item.checked) continue;
+    const jour = localDayIso(item.purchase_date);
+    if (!jour) {
+      sansDate.push(item);
+      continue;
+    }
+    const groupe = parJour.get(jour) ?? [];
+    groupe.push(item);
+    parJour.set(jour, groupe);
+  }
+
+  const groupesDates: PurchasedShoppingListDayGroup[] = Array.from(parJour, ([dayIso, groupItems]) => ({
+    key: (dayIso === aujourdHui ? "today" : dayIso === hier ? "yesterday" : "older") as PurchasedDayGroupKey,
+    dayIso,
+    items: [...groupItems].sort(compareShoppingItemsAlphabetically),
+  })).sort((a, b) => b.dayIso.localeCompare(a.dayIso));
+
+  if (sansDate.length === 0) return groupesDates;
+  return [
+    ...groupesDates,
+    { key: "unknown", dayIso: NO_DATE_GROUP, items: [...sansDate].sort(compareShoppingItemsAlphabetically) },
   ];
 }

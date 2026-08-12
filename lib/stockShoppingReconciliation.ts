@@ -61,6 +61,6 @@ export async function findMatchingUncheckedShoppingItems(stockItem: MatchableSto
   );
 }
 
-export async function markShoppingItemPurchased(id: string): Promise<void> {
-  await toggleShoppingListItem(id, true);
+export async function markShoppingItemPurchased(id: string, purchaseDate: string): Promise<void> {
+  await toggleShoppingListItem(id, true, purchaseDate);
 }

@@ -122,7 +122,7 @@ describe("groupe des articles sans date", () => {
   it("5. l'identifiant technique du groupe n'est jamais passé à un formateur de date", () => {
     // La branche "undated" est évaluée AVANT le repli formatDate(groupe.dayIso).
     const indexUndated = CODE.indexOf('groupe.key === "undated"');
-    const indexFormat = CODE.indexOf("formatDate(groupe.dayIso");
+    const indexFormat = CODE.indexOf("formatDate(groupe.dayIso", indexUndated);
     expect(indexUndated).toBeGreaterThan(-1);
     expect(indexFormat).toBeGreaterThan(indexUndated);
   });
@@ -130,5 +130,27 @@ describe("groupe des articles sans date", () => {
   it("6. les libellés existent dans les deux dictionnaires", () => {
     expect(DICTIONNAIRES).toContain('"courses.noDate": "Sans date"');
     expect(DICTIONNAIRES).toContain('"courses.noDate": "No date"');
+  });
+});
+
+describe("articles achetés regroupés par date d'achat", () => {
+  it("7. le composant utilise le regroupement achat dédié", () => {
+    expect(CODE).toContain("groupPurchasedShoppingListByPurchaseDate");
+    expect(PAGE).toMatch(/groupPurchasedShoppingListByPurchaseDate[\s\S]*?from "@\/lib\/shoppingList"/);
+  });
+
+  it("8. les achats affichent des sous-groupes par purchase_date", () => {
+    expect(CODE).toContain("groupPurchasedShoppingListByPurchaseDate(checked)");
+    expect(CODE).toContain("courses.purchasedToday");
+    expect(CODE).toContain("courses.purchasedYesterday");
+    expect(CODE).toContain("courses.unknownPurchaseDate");
+  });
+
+  it("9. les libellés achat existent dans les deux dictionnaires", () => {
+    expect(DICTIONNAIRES).toContain('"courses.purchasedToday": "Achetés aujourd');
+    expect(DICTIONNAIRES).toContain('"courses.purchasedYesterday": "Achetés hier"');
+    expect(DICTIONNAIRES).toContain('"courses.unknownPurchaseDate": "Date d');
+    expect(DICTIONNAIRES).toContain('"courses.purchasedToday": "Purchased today"');
+    expect(DICTIONNAIRES).toContain('"courses.unknownPurchaseDate": "Unknown purchase date"');
   });
 });

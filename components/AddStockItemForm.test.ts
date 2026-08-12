@@ -23,6 +23,11 @@ describe("AddStockItemForm — reconciliation Stock -> Courses", () => {
     expect(CODE).not.toContain("confirm(");
   });
 
+  it("transmet la purchase_date du stock a la mutation Courses", () => {
+    expect(CODE).toContain("savedStockItemForReconciliation");
+    expect(CODE).toContain("markShoppingItemPurchased(selectedShoppingItemId, savedStockItemForReconciliation.purchase_date)");
+  });
+
   it("gere plusieurs correspondances sans auto-check silencieux", () => {
     expect(CODE).toContain("matchingShoppingItems.length > 1");
     expect(CODE).toContain("setSelectedShoppingItemId");

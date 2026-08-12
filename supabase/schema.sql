@@ -101,6 +101,8 @@ update shopping_list set created_at = coalesce(created_at, updated_at);
 alter table shopping_list alter column created_at set default now();
 alter table shopping_list alter column created_at set not null;
 
+alter table shopping_list add column if not exists purchase_date date;
+
 alter table stock_items add column if not exists created_at timestamptz;
 update stock_items set created_at = coalesce(created_at, updated_at);
 alter table stock_items alter column created_at set default now();

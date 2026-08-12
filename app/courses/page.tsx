@@ -4,13 +4,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import BackButton from "@/components/BackButton";
 import { useLocale } from "@/components/LocaleProvider";
-import { formatDate, formatQuantity } from "@/lib/format";
+import { formatDate, formatQuantity, localDayIso } from "@/lib/format";
 import {
   addShoppingListItems,
   appendKnownArticleName,
   isKnownArticleSelected,
   listKnownArticleNames,
   compareShoppingItemsAlphabetically,
+  groupPurchasedShoppingListByPurchaseDate,
   groupShoppingListByDay,
   listShoppingList,
   shoppingItemDate,
@@ -81,7 +82,11 @@ export default function CoursesPage() {
 
   async function handleToggle(id: string, checked: boolean) {
     const previousItems = items;
-    setItems((current) => current.map((item) => (item.id === id ? { ...item, checked } : item)));
+    setItems((current) =>
+      current.map((item) =>
+        item.id === id ? { ...item, checked, purchase_date: checked ? localDayIso(new Date()) : null } : item
+      )
+    );
     try {
       await toggleShoppingListItem(id, checked);
       void refresh();
@@ -159,10 +164,44 @@ export default function CoursesPage() {
     );
   }
 
+  function purchasedGroupTitle(groupe: ReturnType<typeof groupPurchasedShoppingListByPurchaseDate>[number]) {
+    if (groupe.key === "today") return t("courses.purchasedToday");
+    if (groupe.key === "yesterday") return t("courses.purchasedYesterday");
+    if (groupe.key === "unknown") return t("courses.unknownPurchaseDate");
+    return t("courses.purchasedOn", { date: formatDate(groupe.dayIso, locale) });
+  }
+
+  function renderPurchasedItem(item: ShoppingListItem) {
+    return (
+      <li
+        key={item.id}
+        className="flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 p-3"
+      >
+        <input
+          type="checkbox"
+          checked={item.checked}
+          onChange={(e) => handleToggle(item.id, e.target.checked)}
+          title={t("courses.uncheckTitle")}
+          className={checkboxClass}
+        />
+        <span className="flex-1 min-w-0 line-through opacity-50">
+          <span className="break-words">
+            {item.item_name} <span className="text-xs">{formatQuantity(t, item.quantity, item.unit)}</span>
+          </span>
+          <span className="block text-xs no-underline opacity-70">{formatDate(item.purchase_date, locale)}</span>
+        </span>
+        <button type="button" onClick={() => handleRemove(item.id)} className="text-xs">
+          ✕
+        </button>
+      </li>
+    );
+  }
+
   const unchecked = items.filter((i) => !i.checked);
   const uncheckedRecipes = unchecked.filter((i) => i.source === "auto");
   const uncheckedManual = unchecked.filter((i) => i.source === "manual");
   const checked = items.filter((i) => i.checked);
+  const purchasedGroups = groupPurchasedShoppingListByPurchaseDate(checked);
 
   const recipeGroups = new Map<string, ShoppingListItem[]>();
   for (const item of uncheckedRecipes) {
@@ -292,37 +331,14 @@ export default function CoursesPage() {
       )}
 
       {checked.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <h2 className="text-sm font-medium opacity-60">{t("courses.purchased")}</h2>
-          <ul className="space-y-2">
-            {[...checked]
-              .sort(compareShoppingItemsAlphabetically)
-              .map((item) => (
-              <li
-                key={item.id}
-                className="flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 p-3"
-              >
-                <input
-                  type="checkbox"
-                  checked={item.checked}
-                  onChange={(e) => handleToggle(item.id, e.target.checked)}
-                  title={t("courses.uncheckTitle")}
-                  className={checkboxClass}
-                />
-                <span className="flex-1 min-w-0 line-through opacity-50">
-                  <span className="break-words">
-                    {item.item_name} <span className="text-xs">{formatQuantity(t, item.quantity, item.unit)}</span>
-                  </span>
-                  <span className="block text-xs no-underline opacity-70">
-                    {formatDate(shoppingItemDate(item), locale)}
-                  </span>
-                </span>
-                <button type="button" onClick={() => handleRemove(item.id)} className="text-xs">
-                  ✕
-                </button>
-              </li>
-            ))}
-          </ul>
+          {purchasedGroups.map((groupe) => (
+            <div key={groupe.dayIso} className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide opacity-60">{purchasedGroupTitle(groupe)}</h3>
+              <ul className="space-y-2">{groupe.items.map(renderPurchasedItem)}</ul>
+            </div>
+          ))}
         </div>
       )}
     </div>

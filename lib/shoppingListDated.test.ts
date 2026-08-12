@@ -14,6 +14,7 @@ import {
   appendKnownArticleName,
   compareShoppingItemsAlphabetically,
   compareShoppingItemsByDateDesc,
+  groupPurchasedShoppingListByPurchaseDate,
   groupShoppingListByDay,
   isKnownArticleSelected,
   listShoppingList,
@@ -283,6 +284,16 @@ describe("sélecteur d'articles connus", () => {
 });
 
 describe("checked shopping_list", () => {
+  it("13octies-bis. coche manuelle : false -> true pose purchase_date a aujourd'hui", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 7, 12, 10, 0, 0));
+    await db.shopping_list.put(makeItem({ id: "toggle-1", checked: false, purchase_date: null }));
+
+    await toggleShoppingListItem("toggle-1", true);
+
+    expect((await db.shopping_list.get("toggle-1"))?.purchase_date).toBe("2026-08-12");
+  });
+
   it("13nonies. false -> true", async () => {
     await db.shopping_list.put(makeItem({ id: "toggle-1", checked: false }));
     const avant = await db.shopping_list.get("toggle-1");
@@ -294,13 +305,57 @@ describe("checked shopping_list", () => {
   });
 
   it("13decies. true -> false", async () => {
-    await db.shopping_list.put(makeItem({ id: "toggle-1", checked: true }));
+    await db.shopping_list.put(makeItem({ id: "toggle-1", checked: true, purchase_date: "2026-08-12" }));
     const avant = await db.shopping_list.get("toggle-1");
 
     await toggleShoppingListItem("toggle-1", false);
 
     expect(avant?.checked).toBe(true);
     expect((await db.shopping_list.get("toggle-1"))?.checked).toBe(false);
+    expect((await db.shopping_list.get("toggle-1"))?.purchase_date).toBeNull();
+  });
+
+  it("13decies-bis. recheck pose une nouvelle purchase_date", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 7, 12, 10, 0, 0));
+    await db.shopping_list.put(makeItem({ id: "toggle-1", checked: true, purchase_date: "2026-08-10" }));
+
+    await toggleShoppingListItem("toggle-1", false);
+    vi.setSystemTime(new Date(2026, 7, 15, 10, 0, 0));
+    await toggleShoppingListItem("toggle-1", true);
+
+    expect((await db.shopping_list.get("toggle-1"))?.purchase_date).toBe("2026-08-15");
+  });
+
+  it("13decies-ter. created_at preserve et updated_at evolue sur coche, decoche et recheck", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const createdAt = "2026-08-01T08:00:00.000Z";
+    await db.shopping_list.put(
+      makeItem({
+        id: "toggle-1",
+        checked: false,
+        purchase_date: null,
+        created_at: createdAt,
+        updated_at: "2026-08-01T08:00:00.000Z",
+      })
+    );
+
+    vi.setSystemTime(new Date("2026-08-12T10:00:00.000Z"));
+    await toggleShoppingListItem("toggle-1", true);
+    const coche = await db.shopping_list.get("toggle-1");
+    vi.setSystemTime(new Date("2026-08-13T10:00:00.000Z"));
+    await toggleShoppingListItem("toggle-1", false);
+    const decoche = await db.shopping_list.get("toggle-1");
+    vi.setSystemTime(new Date("2026-08-14T10:00:00.000Z"));
+    await toggleShoppingListItem("toggle-1", true);
+    const recoche = await db.shopping_list.get("toggle-1");
+
+    expect(coche?.created_at).toBe(createdAt);
+    expect(decoche?.created_at).toBe(createdAt);
+    expect(recoche?.created_at).toBe(createdAt);
+    expect(coche?.updated_at).toBe("2026-08-12T10:00:00.000Z");
+    expect(decoche?.updated_at).toBe("2026-08-13T10:00:00.000Z");
+    expect(recoche?.updated_at).toBe("2026-08-14T10:00:00.000Z");
   });
 
   it("13undecies. refresh après toggle relit l'état Dexie", async () => {
@@ -332,6 +387,7 @@ describe("checked shopping_list", () => {
     expect(entry.op).toBe("upsert");
     expect(entry.payload.id).toBe("toggle-1");
     expect(entry.payload.checked).toBe(true);
+    expect(entry.payload.purchase_date).toEqual(expect.any(String));
   });
 
   it("13quattuordecies. aucun impact sur le tri alphabétique", () => {
@@ -346,6 +402,84 @@ describe("checked shopping_list", () => {
       "Banane",
       "Carotte",
     ]);
+  });
+});
+
+describe("groupPurchasedShoppingListByPurchaseDate", () => {
+  const maintenant = new Date(2026, 7, 12, 12, 0, 0);
+
+  it("38. conserve une ligne checked legacy sans purchase_date dans Date d'achat inconnue", () => {
+    const groupes = groupPurchasedShoppingListByPurchaseDate(
+      [makeItem({ id: "legacy", checked: true, purchase_date: null })],
+      maintenant
+    );
+
+    expect(groupes.map((g) => g.key)).toEqual(["unknown"]);
+    expect(groupes[0].items.map((item) => item.id)).toEqual(["legacy"]);
+  });
+
+  it("39. groupe Aujourd'hui correct", () => {
+    const groupes = groupPurchasedShoppingListByPurchaseDate(
+      [makeItem({ id: "today", checked: true, purchase_date: "2026-08-12" })],
+      maintenant
+    );
+
+    expect(groupes[0]).toMatchObject({ key: "today", dayIso: "2026-08-12" });
+  });
+
+  it("40. groupe Hier correct", () => {
+    const groupes = groupPurchasedShoppingListByPurchaseDate(
+      [makeItem({ id: "yesterday", checked: true, purchase_date: "2026-08-11" })],
+      maintenant
+    );
+
+    expect(groupes[0]).toMatchObject({ key: "yesterday", dayIso: "2026-08-11" });
+  });
+
+  it("41. ancienne date correctement libellee en older", () => {
+    const groupes = groupPurchasedShoppingListByPurchaseDate(
+      [makeItem({ id: "older", checked: true, purchase_date: "2026-08-10" })],
+      maintenant
+    );
+
+    expect(groupes[0]).toMatchObject({ key: "older", dayIso: "2026-08-10" });
+  });
+
+  it("42. trie les dates decroissantes puis place les inconnues apres les groupes dates", () => {
+    const groupes = groupPurchasedShoppingListByPurchaseDate(
+      [
+        makeItem({ id: "unknown", checked: true, purchase_date: null }),
+        makeItem({ id: "old", checked: true, purchase_date: "2026-08-01" }),
+        makeItem({ id: "recent", checked: true, purchase_date: "2026-08-12" }),
+      ],
+      maintenant
+    );
+
+    expect(groupes.map((g) => g.dayIso)).toEqual(["2026-08-12", "2026-08-01", NO_DATE_GROUP]);
+  });
+
+  it("43. trie alphabetiquement a l'interieur d'un groupe", () => {
+    const [groupe] = groupPurchasedShoppingListByPurchaseDate(
+      [
+        makeItem({ id: "b", item_name: "Banane", checked: true, purchase_date: "2026-08-12" }),
+        makeItem({ id: "a", item_name: "Abricot", checked: true, purchase_date: "2026-08-12" }),
+      ],
+      maintenant
+    );
+
+    expect(groupe.items.map((item) => item.item_name)).toEqual(["Abricot", "Banane"]);
+  });
+
+  it("44. les non coches restent exclus du regroupement achete", () => {
+    const groupes = groupPurchasedShoppingListByPurchaseDate(
+      [
+        makeItem({ id: "todo", checked: false, purchase_date: null }),
+        makeItem({ id: "done", checked: true, purchase_date: "2026-08-12" }),
+      ],
+      maintenant
+    );
+
+    expect(groupes.flatMap((g) => g.items).map((item) => item.id)).toEqual(["done"]);
   });
 });
 

@@ -29,6 +29,7 @@ function shoppingItem(overrides: Partial<ShoppingListItem> = {}): ShoppingListIt
     source: "manual",
     recipe_name: null,
     checked: false,
+    purchase_date: null,
     created_at: "2026-08-12T08:00:00.000Z",
     updated_at: "2026-08-12T08:00:00.000Z",
     ...overrides,
@@ -128,10 +129,11 @@ describe("markShoppingItemPurchased", () => {
     vi.setSystemTime(new Date("2026-08-12T10:00:00.000Z"));
     await db.shopping_list.put(shoppingItem());
 
-    await markShoppingItemPurchased("shopping-1");
+    await markShoppingItemPurchased("shopping-1", "2026-08-10");
 
     const item = await db.shopping_list.get("shopping-1");
     expect(item?.checked).toBe(true);
+    expect(item?.purchase_date).toBe("2026-08-10");
     expect(item?.created_at).toBe("2026-08-12T08:00:00.000Z");
     expect(item?.updated_at).toBe("2026-08-12T10:00:00.000Z");
     expect(item?.household_id).toBe(FOYER);
@@ -141,6 +143,7 @@ describe("markShoppingItemPurchased", () => {
       id: "shopping-1",
       household_id: FOYER,
       checked: true,
+      purchase_date: "2026-08-10",
       created_at: "2026-08-12T08:00:00.000Z",
       updated_at: "2026-08-12T10:00:00.000Z",
     });
@@ -158,10 +161,22 @@ describe("markShoppingItemPurchased", () => {
   it("offline sans Supabase disponible -> ecriture locale correcte et queue creee", async () => {
     await db.shopping_list.put(shoppingItem());
 
-    await markShoppingItemPurchased("shopping-1");
+    await markShoppingItemPurchased("shopping-1", "2026-08-10");
 
     expect((await db.shopping_list.get("shopping-1"))?.checked).toBe(true);
+    expect((await db.shopping_list.get("shopping-1"))?.purchase_date).toBe("2026-08-10");
     expect(await db.sync_queue.count()).toBe(1);
+  });
+
+  it("rapprochement Stock -> Courses utilise stock.purchase_date même si la confirmation arrive plus tard", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-12T10:00:00.000Z"));
+    await db.shopping_list.put(shoppingItem());
+
+    await markShoppingItemPurchased("shopping-1", stockItem({ purchase_date: "2026-08-10" }).purchase_date);
+
+    expect((await db.shopping_list.get("shopping-1"))?.purchase_date).toBe("2026-08-10");
+    vi.useRealTimers();
   });
 });
 
@@ -209,7 +224,7 @@ describe("integration ajout Stock puis rapprochement Courses", () => {
     await db.sync_queue.clear();
     vi.spyOn(db.sync_queue, "add").mockRejectedValueOnce(new Error("queue down"));
 
-    await expect(markShoppingItemPurchased("shopping-1")).rejects.toThrow("queue down");
+    await expect(markShoppingItemPurchased("shopping-1", stock.purchase_date)).rejects.toThrow("queue down");
 
     expect(await db.stock_items.get(stock.id)).toBeDefined();
     expect((await db.shopping_list.get("shopping-1"))?.checked).toBe(false);

@@ -91,6 +91,10 @@ export interface ShoppingListItem {
   source: "manual" | "auto";
   recipe_name: string | null; // nom de la recette d'origine si source === "auto"
   checked: boolean;
+  // Date METIER d'achat, au format YYYY-MM-DD. Null tant que l'article reste
+  // une intention d'achat. Optionnel pour compatibilite avec les anciennes
+  // lignes locales et les snapshots anterieurs a la colonne Supabase.
+  purchase_date?: string | null;
   updated_at: string; // horodatage TECHNIQUE, réécrit à chaque modification
   // Horodatage TECHNIQUE d'ajout à la liste, posé une seule fois et jamais
   // réécrit ensuite — contrairement à `updated_at`, que cocher un article

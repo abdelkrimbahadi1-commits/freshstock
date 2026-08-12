@@ -12,6 +12,7 @@ import {
   DEFAULT_SHELF_LIFE_DAYS,
   type Category,
   type ShoppingListItem,
+  type StockItem,
   type StockLocation,
 } from "@/lib/types";
 
@@ -45,6 +46,7 @@ export default function AddStockItemForm({
   const [saving, setSaving] = useState(false);
   const [matchingShoppingItems, setMatchingShoppingItems] = useState<ShoppingListItem[]>([]);
   const [selectedShoppingItemId, setSelectedShoppingItemId] = useState("");
+  const [savedStockItemForReconciliation, setSavedStockItemForReconciliation] = useState<StockItem | null>(null);
   const [reconcileError, setReconcileError] = useState<string | null>(null);
   const hasPendingReconciliation = matchingShoppingItems.length > 0;
 
@@ -79,6 +81,7 @@ export default function AddStockItemForm({
       });
       const matches = await findMatchingUncheckedShoppingItems(savedStockItem);
       if (matches.length > 0) {
+        setSavedStockItemForReconciliation(savedStockItem);
         setMatchingShoppingItems(matches);
         setSelectedShoppingItemId(matches[0].id);
         setSaving(false);
@@ -93,11 +96,11 @@ export default function AddStockItemForm({
   }
 
   async function markSelectedShoppingItemPurchased() {
-    if (!selectedShoppingItemId) return;
+    if (!selectedShoppingItemId || !savedStockItemForReconciliation) return;
     setSaving(true);
     setReconcileError(null);
     try {
-      await markShoppingItemPurchased(selectedShoppingItemId);
+      await markShoppingItemPurchased(selectedShoppingItemId, savedStockItemForReconciliation.purchase_date);
       onSaved();
     } catch {
       setSaving(false);
