@@ -44,17 +44,35 @@ describe("ajout multiple", () => {
 
   it("3quater. le sélecteur connu ajoute au textarea sans remplacer les lignes précédentes", () => {
     expect(CODE).toContain("appendKnownArticleName");
-    expect(CODE).toContain("setName((current) => appendKnownArticleName(current, e.target.value))");
+    expect(CODE).toContain("appendKnownArticleName(current, articleName)");
+  });
+
+  it("3quinquies. les articles connus ne passent plus par un select natif mono-choix", () => {
+    expect(CODE).not.toContain("<select");
+    expect(CODE).not.toContain("<option");
+  });
+
+  it("3sexies. les articles connus sont affichés comme boutons sélectionnables avec coche", () => {
+    expect(CODE).toContain("knownArticleButtonClass");
+    expect(CODE).toContain("isKnownArticleSelected");
+    expect(CODE).toContain("toggleKnownArticleName");
+    expect(CODE).toContain("✓");
+  });
+
+  it("3septies. sélectionner puis désélectionner un article connu modifie le textarea", () => {
+    expect(CODE).toContain("removeKnownArticleName");
+    expect(CODE).toContain("appendKnownArticleName(current, articleName)");
+    expect(CODE).toContain("removeKnownArticleName(current, articleName)");
   });
 });
 
 describe("check visuel", () => {
-  it("3quinquies. la checkbox native est contrôlée par item.checked", () => {
+  it("3octies. la checkbox native est contrôlée par item.checked", () => {
     expect(CODE).toContain("type=\"checkbox\"");
     expect(CODE).toContain("checked={item.checked}");
   });
 
-  it("3sexies. le toggle met à jour items avant le refresh asynchrone", () => {
+  it("3nonies. le toggle met à jour items avant le refresh asynchrone", () => {
     const handleToggleIndex = CODE.indexOf("async function handleToggle");
     const updateIndex = CODE.indexOf("setItems((current)", handleToggleIndex);
     const awaitIndex = CODE.indexOf("await toggleShoppingListItem", handleToggleIndex);
@@ -64,12 +82,12 @@ describe("check visuel", () => {
     expect(awaitIndex).toBeGreaterThan(updateIndex);
   });
 
-  it("3septies. les checkbox ont des dimensions et une couleur d'accent explicites", () => {
+  it("3decies. les checkbox ont des dimensions et une couleur d'accent explicites", () => {
     expect(CODE).toContain("checkboxClass");
     expect(CODE).toContain("accent-accent");
   });
 
-  it("3octies. l'opacité des articles achetés n'atténue pas la checkbox", () => {
+  it("3undecies. l'opacité des articles achetés n'atténue pas la checkbox", () => {
     expect(CODE).not.toContain('className="flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 p-3 opacity-50"');
     expect(CODE).toContain('className="flex-1 min-w-0 line-through opacity-50"');
   });

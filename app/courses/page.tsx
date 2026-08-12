@@ -8,22 +8,24 @@ import { formatDate, formatQuantity } from "@/lib/format";
 import {
   addShoppingListItems,
   appendKnownArticleName,
+  isKnownArticleSelected,
   listKnownArticleNames,
   compareShoppingItemsAlphabetically,
   groupShoppingListByDay,
   listShoppingList,
   shoppingItemDate,
+  removeKnownArticleName,
   removeShoppingListItem,
   toggleShoppingListItem,
   updateShoppingListItemQuantity,
 } from "@/lib/shoppingList";
 import type { ShoppingListItem } from "@/lib/types";
 
-const OTHER_SENTINEL = "__other__";
-
 const fieldClass =
   "rounded-lg border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-3 py-2 text-sm shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)]";
 const checkboxClass = "h-5 w-5 shrink-0 accent-accent";
+const knownArticleButtonClass =
+  "flex min-h-10 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm";
 
 export default function CoursesPage() {
   const { t, locale } = useLocale();
@@ -56,6 +58,14 @@ export default function CoursesPage() {
     setQuantity(1);
     setUnit("");
     void refresh();
+  }
+
+  function toggleKnownArticleName(articleName: string) {
+    setName((current) =>
+      isKnownArticleSelected(current, articleName)
+        ? removeKnownArticleName(current, articleName)
+        : appendKnownArticleName(current, articleName)
+    );
   }
 
   async function handleToggle(id: string, checked: boolean) {
@@ -160,25 +170,27 @@ export default function CoursesPage() {
         <p className="text-xs opacity-60">{t("courses.addHint")}</p>
 
         {knownNames.length > 0 && (
-          <select
-            value=""
-            onChange={(e) => {
-              if (e.target.value !== OTHER_SENTINEL) {
-                setName((current) => appendKnownArticleName(current, e.target.value));
-              }
-            }}
-            className={`w-full ${fieldClass}`}
-          >
-            <option value="" disabled>
-              {t("courses.selectArticle")}
-            </option>
-            {knownNames.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-            <option value={OTHER_SENTINEL}>{t("courses.otherArticle")}</option>
-          </select>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {knownNames.map((articleName) => {
+              const selected = isKnownArticleSelected(name, articleName);
+              return (
+                <button
+                  key={articleName}
+                  type="button"
+                  onClick={() => toggleKnownArticleName(articleName)}
+                  aria-pressed={selected}
+                  className={`${knownArticleButtonClass} ${
+                    selected
+                      ? "border-accent bg-accent/10 text-foreground"
+                      : "border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900"
+                  }`}
+                >
+                  <span className="min-w-0 break-words">{articleName}</span>
+                  <span className="w-5 shrink-0 text-center text-accent">{selected ? "✓" : ""}</span>
+                </button>
+              );
+            })}
+          </div>
         )}
 
         <textarea

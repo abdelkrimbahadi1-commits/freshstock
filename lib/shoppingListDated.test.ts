@@ -15,8 +15,10 @@ import {
   compareShoppingItemsAlphabetically,
   compareShoppingItemsByDateDesc,
   groupShoppingListByDay,
+  isKnownArticleSelected,
   listShoppingList,
   parseShoppingListItemNames,
+  removeKnownArticleName,
   shoppingItemDate,
   toggleShoppingListItem,
   updateShoppingListItemQuantity,
@@ -178,6 +180,57 @@ describe("ajout multiple", () => {
     expect(await db.shopping_list.count()).toBe(0);
     expect(await db.sync_queue.count()).toBe(0);
   });
+
+  it("13bis. validation exacte Blume mouchoirs + brocolis : l'existant est ramené dans les achats du jour", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 7, 12, 9, 0, 0));
+    await db.shopping_list.put(
+      makeItem({
+        id: "brocolis-auto",
+        item_name: "brocolis",
+        source: "auto",
+        recipe_name: "Gratin",
+        created_at: "2026-08-01T09:00:00.000Z",
+        updated_at: "2026-08-01T09:00:00.000Z",
+      })
+    );
+
+    await addShoppingListItems("Blume mouchoirs\nbrocolis", 1, "unite");
+
+    const items = await listShoppingList();
+    expect(items).toHaveLength(2);
+    expect(items.map((item) => item.item_name).sort((a, b) => a.localeCompare(b))).toEqual([
+      "Blume mouchoirs",
+      "brocolis",
+    ]);
+    const groupes = groupShoppingListByDay(
+      items.filter((item) => !item.checked && item.source === "manual"),
+      new Date(2026, 7, 12, 12, 0, 0)
+    );
+    expect(groupes[0].key).toBe("today");
+    expect(groupes[0].items.map((item) => item.item_name)).toEqual(["Blume mouchoirs", "brocolis"]);
+
+    const queue = await db.sync_queue.toArray();
+    expect(queue).toHaveLength(2);
+    expect(queue.map((entry) => entry.payload.item_name).sort()).toEqual(["Blume mouchoirs", "brocolis"]);
+  });
+
+  it("13ter. validation de trois lignes : les trois articles sont créés après un seul clic logique", async () => {
+    await addShoppingListItems("Lait\nRiz\nTomates", 2, "kg");
+
+    const items = await listShoppingList();
+    expect(items).toHaveLength(3);
+    expect(items.map((item) => item.item_name).sort()).toEqual(["Lait", "Riz", "Tomates"]);
+    expect(await db.sync_queue.count()).toBe(3);
+  });
+
+  it("13quater. lignes vides ignorées sans perdre les lignes utiles", async () => {
+    await addShoppingListItems("\nBlume mouchoirs\n\nbrocolis\n ", 1, "unite");
+
+    const items = await listShoppingList();
+    expect(items.map((item) => item.item_name).sort()).toEqual(["Blume mouchoirs", "brocolis"]);
+    expect(await db.sync_queue.count()).toBe(2);
+  });
 });
 
 describe("sélecteur d'articles connus", () => {
@@ -207,6 +260,25 @@ describe("sélecteur d'articles connus", () => {
 
   it("13octies. collage multi-ligne + sélection connue : aucune donnée remplacée", () => {
     expect(appendKnownArticleName("Pain\nLait", "Riz")).toBe("Pain\nLait\nRiz");
+  });
+
+  it("13novies. sélection de plusieurs articles connus puis validation : tous sont créés", async () => {
+    const input = appendKnownArticleName(appendKnownArticleName("", "Blume mouchoirs"), "brocolis");
+
+    await addShoppingListItems(input, 1, "unite");
+
+    expect((await listShoppingList()).map((item) => item.item_name).sort()).toEqual([
+      "Blume mouchoirs",
+      "brocolis",
+    ]);
+    expect(await db.sync_queue.count()).toBe(2);
+  });
+
+  it("13decies. désélectionner un article connu le retire sans toucher aux autres lignes", () => {
+    const input = "Blume mouchoirs\nbrocolis\nRiz";
+
+    expect(isKnownArticleSelected(input, "BROCOLIS")).toBe(true);
+    expect(removeKnownArticleName(input, "brocolis")).toBe("Blume mouchoirs\nRiz");
   });
 });
 

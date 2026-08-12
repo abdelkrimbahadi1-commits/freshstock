@@ -44,6 +44,23 @@ export async function addShoppingListItem(
   if (existing) {
     // Même ingrédient déjà sur la liste (ex. utilisé par une autre recette) :
     // on évite le doublon mais on garde la trace de toutes les recettes concernées.
+    if (source === "manual" && existing.source !== "manual") {
+      const maintenant = new Date().toISOString();
+      const updated: ShoppingListItem = {
+        ...existing,
+        quantity,
+        unit,
+        source: "manual",
+        recipe_name: null,
+        checked: false,
+        created_at: maintenant,
+        updated_at: maintenant,
+      };
+      await transactAndQueue(["shopping_list"], async () => {
+        await db.shopping_list.put(updated);
+        await enqueueWrite("shopping_list", "upsert", updated as unknown as Record<string, unknown>);
+      });
+    }
     if (recipeName && existing.source === "auto") {
       const names = new Set((existing.recipe_name ?? "").split(", ").filter(Boolean));
       if (!names.has(recipeName)) {
@@ -72,10 +89,9 @@ export async function addShoppingListItem(
     source,
     recipe_name: recipeName,
     checked: false,
-    // Posé ICI et nulle part ailleurs. Aucune des mutations suivantes
-    // (coche/décoche, changement de quantité, ajout d'une recette à un article
-    // déjà présent) ne le réécrit : elles passent toutes par `update()` sur des
-    // champs nommés, ou par un spread qui le préserve.
+    // Posé à la création. Les mutations ordinaires suivantes (coche/décoche,
+    // changement de quantité, ajout d'une recette à un article déjà présent)
+    // ne le réécrivent pas.
     created_at: maintenant,
     updated_at: maintenant,
   };
@@ -100,6 +116,20 @@ export function appendKnownArticleName(input: string, selectedName: string): str
   const alreadyPresent = lines.some((line) => line.toLowerCase() === selected.toLowerCase());
   if (alreadyPresent) return lines.join("\n");
   return [...lines, selected].join("\n");
+}
+
+export function removeKnownArticleName(input: string, selectedName: string): string {
+  const selected = selectedName.trim().toLowerCase();
+  if (!selected) return input;
+  return parseShoppingListItemNames(input)
+    .filter((line) => line.toLowerCase() !== selected)
+    .join("\n");
+}
+
+export function isKnownArticleSelected(input: string, articleName: string): boolean {
+  const selected = articleName.trim().toLowerCase();
+  if (!selected) return false;
+  return parseShoppingListItemNames(input).some((line) => line.toLowerCase() === selected);
 }
 
 export async function addShoppingListItems(
