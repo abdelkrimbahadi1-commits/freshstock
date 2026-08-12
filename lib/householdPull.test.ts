@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db, SYNC_STATUS } from "./db";
-import type { StockItem } from "./types";
+import type { ShoppingListItem, StockItem } from "./types";
 
 const HOUSEHOLD_ID = "household-1";
 const OTHER_HOUSEHOLD_ID = "household-2";
@@ -100,6 +100,26 @@ function stockRow(id: string, householdId: string, overrides: Partial<StockItem>
   };
 }
 
+function shoppingRow(
+  id: string,
+  householdId: string,
+  overrides: Partial<ShoppingListItem> = {}
+): ShoppingListItem {
+  return {
+    id,
+    household_id: householdId,
+    item_name: "Lait",
+    quantity: 1,
+    unit: "unite",
+    source: "manual",
+    recipe_name: null,
+    checked: false,
+    created_at: "2026-08-02T10:00:00.000Z",
+    updated_at: "2026-08-02T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
 beforeEach(async () => {
   await db.stock_items.clear();
   await db.shopping_list.clear();
@@ -137,6 +157,22 @@ describe("pullHouseholdData", () => {
     expect(result.perTable.stock_items).toMatchObject({ created: 0, updated: 1 });
     const stored = await db.stock_items.get("s1");
     expect(stored?.quantity).toBe(5);
+  });
+
+  it("synchronise le checked shopping_list reçu d'un autre compte du foyer", async () => {
+    await db.shopping_list.put(shoppingRow("sl1", HOUSEHOLD_ID, { checked: false }));
+    const remoteShopping = shoppingRow("sl1", HOUSEHOLD_ID, {
+      checked: true,
+      updated_at: "2026-08-02T11:00:00.000Z",
+    });
+    vi.mocked(createClient).mockReturnValue(
+      makeFakeSupabase({ tableData: { shopping_list: [remoteShopping] } }) as never
+    );
+
+    const result = await pullHouseholdData({ householdId: HOUSEHOLD_ID, authenticatedUserId: AUTH_USER });
+
+    expect(result.perTable.shopping_list).toMatchObject({ fetched: 1, created: 0, updated: 1 });
+    expect((await db.shopping_list.get("sl1"))?.checked).toBe(true);
   });
 
   it("protège une ligne locale avec une écriture active dans sync_queue (non écrasée)", async () => {

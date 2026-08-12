@@ -11,6 +11,7 @@ import {
   NO_DATE_GROUP,
   addShoppingListItems,
   addShoppingListItem,
+  appendKnownArticleName,
   compareShoppingItemsAlphabetically,
   compareShoppingItemsByDateDesc,
   groupShoppingListByDay,
@@ -176,6 +177,103 @@ describe("ajout multiple", () => {
     await expect(addShoppingListItems("Pain", 1, "unite")).rejects.toThrow("queue down");
     expect(await db.shopping_list.count()).toBe(0);
     expect(await db.sync_queue.count()).toBe(0);
+  });
+});
+
+describe("sélecteur d'articles connus", () => {
+  it("13bis. première sélection ajoute une ligne", () => {
+    expect(appendKnownArticleName("", "Lait")).toBe("Lait");
+  });
+
+  it("13ter. deuxième sélection conserve la première", () => {
+    expect(appendKnownArticleName("Lait", "Riz")).toBe("Lait\nRiz");
+  });
+
+  it("13quater. troisième sélection conserve les deux précédentes", () => {
+    expect(appendKnownArticleName("Lait\nRiz", "Tomates")).toBe("Lait\nRiz\nTomates");
+  });
+
+  it("13quinquies. sélection identique deux fois : pas de doublon exact", () => {
+    expect(appendKnownArticleName("Lait", "Lait")).toBe("Lait");
+  });
+
+  it("13sexies. casse différente : pas de doublon", () => {
+    expect(appendKnownArticleName("lait", "Lait")).toBe("lait");
+  });
+
+  it("13septies. saisie manuelle déjà présente + sélection connue : les deux restent", () => {
+    expect(appendKnownArticleName("Pain", "Riz")).toBe("Pain\nRiz");
+  });
+
+  it("13octies. collage multi-ligne + sélection connue : aucune donnée remplacée", () => {
+    expect(appendKnownArticleName("Pain\nLait", "Riz")).toBe("Pain\nLait\nRiz");
+  });
+});
+
+describe("checked shopping_list", () => {
+  it("13nonies. false -> true", async () => {
+    await db.shopping_list.put(makeItem({ id: "toggle-1", checked: false }));
+    const avant = await db.shopping_list.get("toggle-1");
+
+    await toggleShoppingListItem("toggle-1", true);
+
+    expect(avant?.checked).toBe(false);
+    expect((await db.shopping_list.get("toggle-1"))?.checked).toBe(true);
+  });
+
+  it("13decies. true -> false", async () => {
+    await db.shopping_list.put(makeItem({ id: "toggle-1", checked: true }));
+    const avant = await db.shopping_list.get("toggle-1");
+
+    await toggleShoppingListItem("toggle-1", false);
+
+    expect(avant?.checked).toBe(true);
+    expect((await db.shopping_list.get("toggle-1"))?.checked).toBe(false);
+  });
+
+  it("13undecies. refresh après toggle relit l'état Dexie", async () => {
+    await db.shopping_list.put(makeItem({ id: "toggle-1", checked: false }));
+
+    await toggleShoppingListItem("toggle-1", true);
+    const refreshed = await listShoppingList();
+
+    expect(refreshed.find((item) => item.id === "toggle-1")?.checked).toBe(true);
+  });
+
+  it("13duodecies. persistence Dexie et rechargement conservent checked", async () => {
+    await db.shopping_list.put(makeItem({ id: "toggle-1", checked: false }));
+
+    await toggleShoppingListItem("toggle-1", true);
+    db.close();
+    await db.open();
+
+    expect((await db.shopping_list.get("toggle-1"))?.checked).toBe(true);
+  });
+
+  it("13terdecies. sync_queue est créée correctement avec checked", async () => {
+    await db.shopping_list.put(makeItem({ id: "toggle-1", checked: false }));
+
+    await toggleShoppingListItem("toggle-1", true);
+    const [entry] = await db.sync_queue.toArray();
+
+    expect(entry.table).toBe("shopping_list");
+    expect(entry.op).toBe("upsert");
+    expect(entry.payload.id).toBe("toggle-1");
+    expect(entry.payload.checked).toBe(true);
+  });
+
+  it("13quattuordecies. aucun impact sur le tri alphabétique", () => {
+    const items = [
+      makeItem({ id: "b", item_name: "Banane", checked: true }),
+      makeItem({ id: "a", item_name: "Abricot", checked: false }),
+      makeItem({ id: "c", item_name: "Carotte", checked: true }),
+    ];
+
+    expect([...items].sort(compareShoppingItemsAlphabetically).map((item) => item.item_name)).toEqual([
+      "Abricot",
+      "Banane",
+      "Carotte",
+    ]);
   });
 });
 

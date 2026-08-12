@@ -92,6 +92,16 @@ export function parseShoppingListItemNames(input: string): string[] {
     .filter(Boolean);
 }
 
+export function appendKnownArticleName(input: string, selectedName: string): string {
+  const selected = selectedName.trim();
+  if (!selected) return input;
+
+  const lines = parseShoppingListItemNames(input);
+  const alreadyPresent = lines.some((line) => line.toLowerCase() === selected.toLowerCase());
+  if (alreadyPresent) return lines.join("\n");
+  return [...lines, selected].join("\n");
+}
+
 export async function addShoppingListItems(
   input: string,
   quantity: number,

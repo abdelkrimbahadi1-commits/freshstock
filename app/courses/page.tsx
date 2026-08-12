@@ -7,6 +7,7 @@ import { useLocale } from "@/components/LocaleProvider";
 import { formatDate, formatQuantity } from "@/lib/format";
 import {
   addShoppingListItems,
+  appendKnownArticleName,
   listKnownArticleNames,
   compareShoppingItemsAlphabetically,
   groupShoppingListByDay,
@@ -22,6 +23,7 @@ const OTHER_SENTINEL = "__other__";
 
 const fieldClass =
   "rounded-lg border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-3 py-2 text-sm shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)]";
+const checkboxClass = "h-5 w-5 shrink-0 accent-accent";
 
 export default function CoursesPage() {
   const { t, locale } = useLocale();
@@ -57,8 +59,15 @@ export default function CoursesPage() {
   }
 
   async function handleToggle(id: string, checked: boolean) {
-    await toggleShoppingListItem(id, checked);
-    void refresh();
+    const previousItems = items;
+    setItems((current) => current.map((item) => (item.id === id ? { ...item, checked } : item)));
+    try {
+      await toggleShoppingListItem(id, checked);
+      void refresh();
+    } catch (error) {
+      setItems(previousItems);
+      throw error;
+    }
   }
 
   async function handleRemove(id: string) {
@@ -87,6 +96,7 @@ export default function CoursesPage() {
             checked={item.checked}
             onChange={(e) => handleToggle(item.id, e.target.checked)}
             title={t("courses.checkTitle")}
+            className={checkboxClass}
           />
           <button type="button" onClick={() => openEditor(item)} className="flex-1 text-left min-w-0">
             <span className="break-words">
@@ -154,7 +164,7 @@ export default function CoursesPage() {
             value=""
             onChange={(e) => {
               if (e.target.value !== OTHER_SENTINEL) {
-                setName(e.target.value);
+                setName((current) => appendKnownArticleName(current, e.target.value));
               }
             }}
             className={`w-full ${fieldClass}`}
@@ -253,15 +263,16 @@ export default function CoursesPage() {
               .map((item) => (
               <li
                 key={item.id}
-                className="flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 p-3 opacity-50"
+                className="flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 p-3"
               >
                 <input
                   type="checkbox"
                   checked={item.checked}
                   onChange={(e) => handleToggle(item.id, e.target.checked)}
                   title={t("courses.uncheckTitle")}
+                  className={checkboxClass}
                 />
-                <span className="flex-1 min-w-0 line-through">
+                <span className="flex-1 min-w-0 line-through opacity-50">
                   <span className="break-words">
                     {item.item_name} <span className="text-xs">{formatQuantity(t, item.quantity, item.unit)}</span>
                   </span>
