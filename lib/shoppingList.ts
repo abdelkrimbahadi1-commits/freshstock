@@ -273,6 +273,14 @@ export interface PurchasedShoppingListDayGroup {
   items: ShoppingListItem[];
 }
 
+export interface CoursesSections {
+  unchecked: ShoppingListItem[];
+  uncheckedRecipes: ShoppingListItem[];
+  uncheckedManual: ShoppingListItem[];
+  checked: ShoppingListItem[];
+  purchasedGroups: PurchasedShoppingListDayGroup[];
+}
+
 // Regroupe par journée calendaire locale et trie du plus récent au plus ancien,
 // groupes comme articles. Fonction PURE : `now` est injecté pour rester
 // testable au changement de mois et d'année.
@@ -349,4 +357,19 @@ export function groupPurchasedShoppingListByPurchaseDate(
     ...groupesDates,
     { key: "unknown", dayIso: NO_DATE_GROUP, items: [...sansDate].sort(compareShoppingItemsAlphabetically) },
   ];
+}
+
+export function splitShoppingItemsForCourses(
+  items: ShoppingListItem[],
+  now: Date = new Date()
+): CoursesSections {
+  const checked = items.filter((item) => item.checked === true);
+  const unchecked = items.filter((item) => item.checked !== true);
+  return {
+    unchecked,
+    uncheckedRecipes: unchecked.filter((item) => item.source === "auto"),
+    uncheckedManual: unchecked.filter((item) => item.source === "manual"),
+    checked,
+    purchasedGroups: groupPurchasedShoppingListByPurchaseDate(checked, now),
+  };
 }

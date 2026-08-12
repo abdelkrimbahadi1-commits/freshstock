@@ -134,13 +134,18 @@ describe("groupe des articles sans date", () => {
 });
 
 describe("articles achetés regroupés par date d'achat", () => {
+  it("6bis. le composant utilise la partition partagée pour séparer À acheter et Achetés", () => {
+    expect(CODE).toContain("splitShoppingItemsForCourses(items)");
+    expect(PAGE).toMatch(/splitShoppingItemsForCourses[\s\S]*?from "@\/lib\/shoppingList"/);
+  });
+
   it("7. le composant utilise le regroupement achat dédié", () => {
     expect(CODE).toContain("groupPurchasedShoppingListByPurchaseDate");
     expect(PAGE).toMatch(/groupPurchasedShoppingListByPurchaseDate[\s\S]*?from "@\/lib\/shoppingList"/);
   });
 
   it("8. les achats affichent des sous-groupes par purchase_date", () => {
-    expect(CODE).toContain("groupPurchasedShoppingListByPurchaseDate(checked)");
+    expect(CODE).toContain("splitShoppingItemsForCourses(items)");
     expect(CODE).toContain("courses.purchasedToday");
     expect(CODE).toContain("courses.purchasedYesterday");
     expect(CODE).toContain("courses.unknownPurchaseDate");

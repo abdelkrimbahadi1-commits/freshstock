@@ -17,6 +17,7 @@ import {
   shoppingItemDate,
   removeKnownArticleName,
   removeShoppingListItem,
+  splitShoppingItemsForCourses,
   toggleShoppingListItem,
   updateShoppingListItemQuantity,
 } from "@/lib/shoppingList";
@@ -197,11 +198,7 @@ export default function CoursesPage() {
     );
   }
 
-  const unchecked = items.filter((i) => !i.checked);
-  const uncheckedRecipes = unchecked.filter((i) => i.source === "auto");
-  const uncheckedManual = unchecked.filter((i) => i.source === "manual");
-  const checked = items.filter((i) => i.checked);
-  const purchasedGroups = groupPurchasedShoppingListByPurchaseDate(checked);
+  const { uncheckedRecipes, uncheckedManual, checked, purchasedGroups } = splitShoppingItemsForCourses(items);
 
   const recipeGroups = new Map<string, ShoppingListItem[]>();
   for (const item of uncheckedRecipes) {

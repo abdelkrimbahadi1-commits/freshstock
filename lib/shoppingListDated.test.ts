@@ -14,6 +14,7 @@ import {
   appendKnownArticleName,
   compareShoppingItemsAlphabetically,
   compareShoppingItemsByDateDesc,
+  splitShoppingItemsForCourses,
   groupPurchasedShoppingListByPurchaseDate,
   groupShoppingListByDay,
   isKnownArticleSelected,
@@ -480,6 +481,33 @@ describe("groupPurchasedShoppingListByPurchaseDate", () => {
     );
 
     expect(groupes.flatMap((g) => g.items).map((item) => item.id)).toEqual(["done"]);
+  });
+
+  it("45. décocher un article acheté le reclasse dans À acheter et hors de tous les groupes Achetés", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 7, 12, 12, 0, 0));
+    await db.shopping_list.put(
+      makeItem({
+        id: "the",
+        item_name: "Thé",
+        source: "manual",
+        checked: true,
+        purchase_date: "2026-08-12",
+        created_at: "2026-08-10T08:00:00.000Z",
+        updated_at: "2026-08-12T09:00:00.000Z",
+      })
+    );
+
+    await toggleShoppingListItem("the", false);
+    const [item] = await listShoppingList();
+    const sections = splitShoppingItemsForCourses([item], new Date(2026, 7, 12, 12, 0, 0));
+
+    expect(item.checked).toBe(false);
+    expect(item.purchase_date).toBeNull();
+    expect(item.created_at).toBe("2026-08-10T08:00:00.000Z");
+    expect(item.updated_at).toBe(new Date(2026, 7, 12, 12, 0, 0).toISOString());
+    expect(sections.uncheckedManual.map((entry) => entry.id)).toEqual(["the"]);
+    expect(sections.purchasedGroups.flatMap((group) => group.items)).toEqual([]);
   });
 });
 
