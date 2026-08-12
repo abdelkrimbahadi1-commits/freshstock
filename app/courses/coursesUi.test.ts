@@ -64,6 +64,26 @@ describe("ajout multiple", () => {
     expect(CODE).toContain("appendKnownArticleName(current, articleName)");
     expect(CODE).toContain("removeKnownArticleName(current, articleName)");
   });
+
+  it("3septies-bis. le sélecteur connu est compact et ouvre un panneau conditionnel", () => {
+    expect(CODE).toContain("knownPickerOpen");
+    expect(CODE).toContain("setKnownPickerOpen");
+    expect(CODE).toContain("knownPickerSummary");
+    expect(CODE).toContain("{knownPickerOpen &&");
+  });
+
+  it("3septies-ter. le panneau a un scroll interne et ne pousse pas toute la page", () => {
+    expect(CODE).toContain("knownArticlePanelClass");
+    expect(CODE).toContain("max-h-64");
+    expect(CODE).toContain("overflow-y-auto");
+  });
+
+  it("3septies-quater. la saisie libre reste juste sous le sélecteur compact", () => {
+    const summaryIndex = CODE.indexOf("knownPickerSummary");
+    const textareaIndex = CODE.indexOf("<textarea");
+    expect(summaryIndex).toBeGreaterThan(-1);
+    expect(textareaIndex).toBeGreaterThan(summaryIndex);
+  });
 });
 
 describe("check visuel", () => {

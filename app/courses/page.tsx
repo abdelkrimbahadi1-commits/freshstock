@@ -25,7 +25,9 @@ const fieldClass =
   "rounded-lg border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-3 py-2 text-sm shadow-[0_2px_0_rgba(0,0,0,0.12)] dark:shadow-[0_2px_0_rgba(255,255,255,0.12)]";
 const checkboxClass = "h-5 w-5 shrink-0 accent-accent";
 const knownArticleButtonClass =
-  "flex min-h-10 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm";
+  "flex min-h-11 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm";
+const knownArticlePanelClass =
+  "max-h-64 overflow-y-auto rounded-lg border border-black/10 dark:border-white/10 p-2 space-y-2";
 
 export default function CoursesPage() {
   const { t, locale } = useLocale();
@@ -36,9 +38,18 @@ export default function CoursesPage() {
   const [quantity, setQuantity] = useState(1);
   const [unit, setUnit] = useState("");
   const [loading, setLoading] = useState(true);
+  const [knownPickerOpen, setKnownPickerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuantity, setEditQuantity] = useState(1);
   const [editUnit, setEditUnit] = useState("");
+
+  const selectedKnownCount = knownNames.filter((articleName) => isKnownArticleSelected(name, articleName)).length;
+  const knownPickerSummary =
+    selectedKnownCount === 0
+      ? t("courses.selectArticle")
+      : selectedKnownCount === 1
+        ? "1 article sélectionné"
+        : `${selectedKnownCount} articles sélectionnés`;
 
   async function refresh() {
     const [list, names] = await Promise.all([listShoppingList(), listKnownArticleNames()]);
@@ -170,26 +181,40 @@ export default function CoursesPage() {
         <p className="text-xs opacity-60">{t("courses.addHint")}</p>
 
         {knownNames.length > 0 && (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {knownNames.map((articleName) => {
-              const selected = isKnownArticleSelected(name, articleName);
-              return (
-                <button
-                  key={articleName}
-                  type="button"
-                  onClick={() => toggleKnownArticleName(articleName)}
-                  aria-pressed={selected}
-                  className={`${knownArticleButtonClass} ${
-                    selected
-                      ? "border-accent bg-accent/10 text-foreground"
-                      : "border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900"
-                  }`}
-                >
-                  <span className="min-w-0 break-words">{articleName}</span>
-                  <span className="w-5 shrink-0 text-center text-accent">{selected ? "✓" : ""}</span>
-                </button>
-              );
-            })}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setKnownPickerOpen((open) => !open)}
+              aria-expanded={knownPickerOpen}
+              className={`flex min-h-11 w-full items-center justify-between gap-3 ${fieldClass}`}
+            >
+              <span className="min-w-0 truncate text-left">{knownPickerSummary}</span>
+              <span className="shrink-0 text-xs opacity-60">{knownPickerOpen ? "Fermer" : "Ouvrir"}</span>
+            </button>
+
+            {knownPickerOpen && (
+              <div className={knownArticlePanelClass}>
+                {knownNames.map((articleName) => {
+                  const selected = isKnownArticleSelected(name, articleName);
+                  return (
+                    <button
+                      key={articleName}
+                      type="button"
+                      onClick={() => toggleKnownArticleName(articleName)}
+                      aria-pressed={selected}
+                      className={`${knownArticleButtonClass} w-full ${
+                        selected
+                          ? "border-accent bg-accent/10 text-foreground"
+                          : "border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900"
+                      }`}
+                    >
+                      <span className="min-w-0 break-words">{articleName}</span>
+                      <span className="w-5 shrink-0 text-center text-accent">{selected ? "✓" : ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
