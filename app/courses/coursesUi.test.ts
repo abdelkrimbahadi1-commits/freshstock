@@ -22,12 +22,24 @@ describe("tri de la liste de courses", () => {
   });
 
   it("2. le composant utilise le comparateur partagé", () => {
-    expect(CODE).toContain("compareShoppingItemsByDateDesc");
-    expect(CODE).toMatch(/\.sort\(compareShoppingItemsByDateDesc\)/);
+    expect(CODE).toContain("compareShoppingItemsAlphabetically");
+    expect(CODE).toMatch(/\.sort\(compareShoppingItemsAlphabetically\)/);
   });
 
   it("3. le comparateur est importé depuis lib/shoppingList", () => {
-    expect(PAGE).toMatch(/compareShoppingItemsByDateDesc[\s\S]*?from "@\/lib\/shoppingList"/);
+    expect(PAGE).toMatch(/compareShoppingItemsAlphabetically[\s\S]*?from "@\/lib\/shoppingList"/);
+  });
+});
+
+describe("ajout multiple", () => {
+  it("3bis. le composant appelle l'ajout multi-ligne partagé", () => {
+    expect(CODE).toContain("addShoppingListItems(");
+    expect(PAGE).toMatch(/addShoppingListItems[\s\S]*?from "@\/lib\/shoppingList"/);
+  });
+
+  it("3ter. la saisie libre utilise un textarea pour accepter les lignes collées", () => {
+    expect(CODE).toContain("<textarea");
+    expect(CODE).not.toContain("<input\n              value={name}");
   });
 });
 

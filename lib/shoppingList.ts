@@ -85,6 +85,25 @@ export async function addShoppingListItem(
   });
 }
 
+export function parseShoppingListItemNames(input: string): string[] {
+  return input
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+export async function addShoppingListItems(
+  input: string,
+  quantity: number,
+  unit: string,
+  source: "manual" | "auto" = "manual",
+  recipeName: string | null = null
+): Promise<void> {
+  for (const itemName of parseShoppingListItemNames(input)) {
+    await addShoppingListItem(itemName, quantity, unit, source, recipeName);
+  }
+}
+
 export async function addMissingIngredients(
   ingredients: RecipeIngredient[],
   locale: Locale,
@@ -172,6 +191,18 @@ export function compareShoppingItemsByDateDesc(
   return dateB.localeCompare(dateA);
 }
 
+export function compareShoppingItemsAlphabetically(
+  a: ShoppingListItem,
+  b: ShoppingListItem
+): number {
+  const byName = a.item_name.localeCompare(b.item_name, "fr", {
+    sensitivity: "base",
+    usage: "sort",
+  });
+  if (byName !== 0) return byName;
+  return a.id.localeCompare(b.id);
+}
+
 export type DayGroupKey = "today" | "yesterday" | "older" | "undated";
 
 export interface ShoppingListDayGroup {
@@ -212,9 +243,12 @@ export function groupShoppingListByDay(
   const groupesDates: ShoppingListDayGroup[] = Array.from(parJour, ([dayIso, groupItems]) => ({
     key: (dayIso === aujourdHui ? "today" : dayIso === hier ? "yesterday" : "older") as DayGroupKey,
     dayIso,
-    items: [...groupItems].sort(compareShoppingItemsByDateDesc),
+    items: [...groupItems].sort(compareShoppingItemsAlphabetically),
   })).sort((a, b) => b.dayIso.localeCompare(a.dayIso));
 
   if (sansDate.length === 0) return groupesDates;
-  return [...groupesDates, { key: "undated", dayIso: NO_DATE_GROUP, items: sansDate }];
+  return [
+    ...groupesDates,
+    { key: "undated", dayIso: NO_DATE_GROUP, items: [...sansDate].sort(compareShoppingItemsAlphabetically) },
+  ];
 }

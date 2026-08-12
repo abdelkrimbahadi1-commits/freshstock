@@ -1,3 +1,4 @@
+import Dexie from "dexie";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db";
 import type { ShoppingListItem } from "./types";
@@ -8,10 +9,13 @@ vi.mock("./session", () => ({ getHouseholdId: vi.fn() }));
 import { getHouseholdId } from "./session";
 import {
   NO_DATE_GROUP,
+  addShoppingListItems,
   addShoppingListItem,
+  compareShoppingItemsAlphabetically,
   compareShoppingItemsByDateDesc,
   groupShoppingListByDay,
   listShoppingList,
+  parseShoppingListItemNames,
   shoppingItemDate,
   toggleShoppingListItem,
   updateShoppingListItemQuantity,
@@ -43,6 +47,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 // ---------------------------------------------------------------------------
@@ -123,17 +128,68 @@ describe("created_at", () => {
   });
 });
 
+describe("ajout multiple", () => {
+  it("7. parse trois lignes en trois noms", () => {
+    expect(parseShoppingListItemNames("Pain\nLait\nOeufs")).toEqual(["Pain", "Lait", "Oeufs"]);
+  });
+
+  it("8. ignore les lignes vides", () => {
+    expect(parseShoppingListItemNames("\nPain\n\nLait\n ")).toEqual(["Pain", "Lait"]);
+  });
+
+  it("9. trim les espaces autour des noms", () => {
+    expect(parseShoppingListItemNames("  Pain  \n\tLait\t")).toEqual(["Pain", "Lait"]);
+  });
+
+  it("10. accepte un collage multi-ligne et ne concatène pas les articles", async () => {
+    await addShoppingListItems("Pain\nLait\nOeufs", 1, "unite");
+    const items = await listShoppingList();
+    expect(items).toHaveLength(3);
+    expect(items.map((item) => item.item_name).sort()).toEqual(["Lait", "Oeufs", "Pain"]);
+    expect(items.some((item) => item.item_name.includes("\n"))).toBe(false);
+  });
+
+  it("11. crée une intention sync_queue cohérente pour chaque article ajouté", async () => {
+    await addShoppingListItems("Pain\nLait\nOeufs", 2, "kg");
+    const items = await listShoppingList();
+    const queue = await db.sync_queue.toArray();
+    expect(items).toHaveLength(3);
+    expect(queue).toHaveLength(3);
+    expect(queue.map((entry) => entry.table)).toEqual(["shopping_list", "shopping_list", "shopping_list"]);
+    expect(queue.map((entry) => entry.op)).toEqual(["upsert", "upsert", "upsert"]);
+    expect(queue.map((entry) => entry.payload.item_name).sort()).toEqual(["Lait", "Oeufs", "Pain"]);
+    expect(queue.every((entry) => entry.payload.quantity === 2 && entry.payload.unit === "kg")).toBe(true);
+  });
+
+  it("12. conserve la déduplication exacte existante des articles non cochés", async () => {
+    await addShoppingListItem("Pain", 1, "unite");
+    await addShoppingListItems("pain\nPain", 1, "unite");
+    expect(await listShoppingList()).toHaveLength(1);
+    expect(await db.sync_queue.count()).toBe(1);
+  });
+
+  it("13. un échec de queue pendant une création ne laisse pas d'article orphelin", async () => {
+    vi.spyOn(db.sync_queue, "add").mockImplementationOnce(
+      (() => Dexie.Promise.reject(new Error("queue down"))) as typeof db.sync_queue.add
+    );
+
+    await expect(addShoppingListItems("Pain", 1, "unite")).rejects.toThrow("queue down");
+    expect(await db.shopping_list.count()).toBe(0);
+    expect(await db.sync_queue.count()).toBe(0);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Compatibilité des anciennes lignes locales
 // ---------------------------------------------------------------------------
 
 describe("shoppingItemDate", () => {
-  it("7. utilise created_at quand il est présent", () => {
+  it("14. utilise created_at quand il est présent", () => {
     const item = makeItem({ created_at: "2026-08-01T09:00:00.000Z" });
     expect(shoppingItemDate(item)).toBe("2026-08-01T09:00:00.000Z");
   });
 
-  it("8. retombe sur updated_at pour les lignes locales antérieures", () => {
+  it("15. retombe sur updated_at pour les lignes locales antérieures", () => {
     const ancien = makeItem({ updated_at: "2026-07-15T09:00:00.000Z" });
     delete (ancien as Partial<ShoppingListItem>).created_at;
     expect(shoppingItemDate(ancien)).toBe("2026-07-15T09:00:00.000Z");
@@ -152,7 +208,7 @@ describe("groupShoppingListByDay", () => {
   const jour = (annee: number, mois: number, j: number, h = 10) =>
     new Date(annee, mois, j, h, 0, 0).toISOString();
 
-  it("9. nomme aujourd'hui, hier, et laisse les jours antérieurs en 'older'", () => {
+  it("16. nomme aujourd'hui, hier, et laisse les jours antérieurs en 'older'", () => {
     const items = [
       makeItem({ id: "a", created_at: jour(2026, 7, 2) }),
       makeItem({ id: "b", created_at: jour(2026, 7, 1) }),
@@ -163,7 +219,7 @@ describe("groupShoppingListByDay", () => {
     expect(groupes.map((g) => g.dayIso)).toEqual(["2026-08-02", "2026-08-01", "2026-07-28"]);
   });
 
-  it("10. trie les groupes du plus récent au plus ancien", () => {
+  it("17. trie les groupes du plus récent au plus ancien", () => {
     const items = [
       makeItem({ id: "vieux", created_at: jour(2026, 6, 20) }),
       makeItem({ id: "recent", created_at: jour(2026, 7, 2) }),
@@ -173,17 +229,17 @@ describe("groupShoppingListByDay", () => {
     expect(groupes.map((g) => g.items[0].id)).toEqual(["recent", "moyen", "vieux"]);
   });
 
-  it("11. trie aussi les articles à l'intérieur d'un même jour", () => {
+  it("18. trie alphabétiquement les articles à l'intérieur d'un même jour", () => {
     const items = [
-      makeItem({ id: "matin", created_at: jour(2026, 7, 2, 8) }),
-      makeItem({ id: "soir", created_at: jour(2026, 7, 2, 20) }),
-      makeItem({ id: "midi", created_at: jour(2026, 7, 2, 13) }),
+      makeItem({ id: "b", item_name: "Banane", created_at: jour(2026, 7, 2, 8) }),
+      makeItem({ id: "c", item_name: "Carotte", created_at: jour(2026, 7, 2, 20) }),
+      makeItem({ id: "a", item_name: "Abricot", created_at: jour(2026, 7, 2, 13) }),
     ];
     const [groupe] = groupShoppingListByDay(items, maintenant);
-    expect(groupe.items.map((i) => i.id)).toEqual(["soir", "midi", "matin"]);
+    expect(groupe.items.map((i) => i.id)).toEqual(["a", "b", "c"]);
   });
 
-  it("12. regroupe les lignes anciennes via le repli updated_at", () => {
+  it("19. regroupe les lignes anciennes via le repli updated_at", () => {
     const ancien = makeItem({ id: "ancien", updated_at: jour(2026, 7, 1) });
     delete (ancien as Partial<ShoppingListItem>).created_at;
     const groupes = groupShoppingListByDay([ancien], maintenant);
@@ -191,7 +247,7 @@ describe("groupShoppingListByDay", () => {
     expect(groupes[0].key).toBe("yesterday");
   });
 
-  it("13. gère le passage d'un mois à l'autre", () => {
+  it("20. gère le passage d'un mois à l'autre", () => {
     // 1er du mois : « hier » est le dernier jour du mois précédent.
     const premierAout = new Date(2026, 7, 1, 12, 0, 0);
     const items = [
@@ -203,7 +259,7 @@ describe("groupShoppingListByDay", () => {
     expect(groupes[1].dayIso).toBe("2026-07-31");
   });
 
-  it("14. gère le passage d'une année à l'autre", () => {
+  it("21. gère le passage d'une année à l'autre", () => {
     const premierJanvier = new Date(2027, 0, 1, 12, 0, 0);
     const items = [
       makeItem({ id: "aujourdhui", created_at: jour(2027, 0, 1) }),
@@ -214,7 +270,7 @@ describe("groupShoppingListByDay", () => {
     expect(groupes[1].dayIso).toBe("2026-12-31");
   });
 
-  it("15. est une fonction pure : n'altère ni le tableau ni les articles reçus", () => {
+  it("22. est une fonction pure : n'altère ni le tableau ni les articles reçus", () => {
     const items = [
       makeItem({ id: "b", created_at: jour(2026, 7, 1) }),
       makeItem({ id: "a", created_at: jour(2026, 7, 2) }),
@@ -224,7 +280,7 @@ describe("groupShoppingListByDay", () => {
     expect(items).toEqual(copie);
   });
 
-  it("16. un created_at illisible retombe sur updated_at plutôt que d'écarter l'article", () => {
+  it("23. un created_at illisible retombe sur updated_at plutôt que d'écarter l'article", () => {
     // Comportement CORRIGÉ : l'ancienne version écartait cet article du
     // regroupement, alors que son updated_at était parfaitement exploitable.
     const casse = makeItem({ id: "casse", created_at: "pas-une-date", updated_at: jour(2026, 7, 2) });
@@ -232,6 +288,88 @@ describe("groupShoppingListByDay", () => {
     const groupes = groupShoppingListByDay([casse, valide], maintenant);
     expect(groupes).toHaveLength(1);
     expect(groupes[0].items.map((i) => i.id).sort()).toEqual(["casse", "ok"]);
+  });
+});
+
+describe("compareShoppingItemsAlphabetically", () => {
+  it("24. trie a, b, c", () => {
+    const items = [
+      makeItem({ id: "c", item_name: "Carotte" }),
+      makeItem({ id: "a", item_name: "Abricot" }),
+      makeItem({ id: "b", item_name: "Banane" }),
+    ];
+    expect([...items].sort(compareShoppingItemsAlphabetically).map((item) => item.item_name)).toEqual([
+      "Abricot",
+      "Banane",
+      "Carotte",
+    ]);
+  });
+
+  it("25. trie sans tenir compte des majuscules/minuscules", () => {
+    const items = [
+      makeItem({ id: "b", item_name: "banane" }),
+      makeItem({ id: "a", item_name: "Abricot" }),
+    ];
+    expect([...items].sort(compareShoppingItemsAlphabetically).map((item) => item.id)).toEqual(["a", "b"]);
+  });
+
+  it("26. rapproche é, è et e avec une comparaison française base", () => {
+    const items = [
+      makeItem({ id: "z", item_name: "zeste" }),
+      makeItem({ id: "e2", item_name: "éclair" }),
+      makeItem({ id: "e3", item_name: "èclair" }),
+      makeItem({ id: "e1", item_name: "eclair" }),
+    ];
+    expect([...items].sort(compareShoppingItemsAlphabetically).map((item) => item.id)).toEqual([
+      "e1",
+      "e2",
+      "e3",
+      "z",
+    ]);
+  });
+
+  it("27. reste déterministe en cas d'égalité de nom par l'id", () => {
+    const items = [
+      makeItem({ id: "b", item_name: "Éclair" }),
+      makeItem({ id: "a", item_name: "eclair" }),
+    ];
+    expect([...items].sort(compareShoppingItemsAlphabetically).map((item) => item.id)).toEqual(["a", "b"]);
+  });
+
+  it("28. conserve le groupe Sans date et y trie les articles", () => {
+    const items = [
+      ligneHeritee("b"),
+      { ...ligneHeritee("a"), item_name: "Abricot" },
+      makeItem({ id: "date", item_name: "Carotte", created_at: "2026-08-02T10:00:00.000Z" }),
+    ];
+    const groupes = groupShoppingListByDay(items, new Date(2026, 7, 2, 12, 0, 0));
+    expect(groupes.map((g) => g.key)).toEqual(["today", "undated"]);
+    expect(groupes[1].dayIso).toBe(NO_DATE_GROUP);
+    expect(groupes[1].items.map((item) => item.item_name)).toEqual(["Abricot", "Pain"]);
+  });
+
+  it("29. conserve les groupes de dates et trie seulement leur contenu", () => {
+    const groupes = groupShoppingListByDay(
+      [
+        makeItem({ id: "today-b", item_name: "Banane", created_at: "2026-08-02T10:00:00.000Z" }),
+        makeItem({ id: "yesterday-a", item_name: "Abricot", created_at: "2026-08-01T10:00:00.000Z" }),
+        makeItem({ id: "today-a", item_name: "Abricot", created_at: "2026-08-02T11:00:00.000Z" }),
+      ],
+      new Date(2026, 7, 2, 12, 0, 0)
+    );
+    expect(groupes.map((g) => g.dayIso)).toEqual(["2026-08-02", "2026-08-01"]);
+    expect(groupes[0].items.map((item) => item.id)).toEqual(["today-a", "today-b"]);
+  });
+
+  it("30. ne mélange pas les articles cochés : le comparateur reste indépendant du statut", () => {
+    const items = [
+      makeItem({ id: "checked-b", item_name: "Banane", checked: true }),
+      makeItem({ id: "unchecked-a", item_name: "Abricot", checked: false }),
+    ];
+    const unchecked = items.filter((item) => !item.checked).sort(compareShoppingItemsAlphabetically);
+    const checked = items.filter((item) => item.checked).sort(compareShoppingItemsAlphabetically);
+    expect(unchecked.map((item) => item.id)).toEqual(["unchecked-a"]);
+    expect(checked.map((item) => item.id)).toEqual(["checked-b"]);
   });
 });
 
@@ -265,13 +403,13 @@ describe("lignes héritées sans aucune date", () => {
   const maintenant = new Date(2026, 7, 2, 12, 0, 0);
   const jour = (a: number, m: number, j: number, h = 10) => new Date(a, m, j, h, 0, 0).toISOString();
 
-  it("17. shoppingItemDate retourne null, jamais undefined", () => {
+  it("31. shoppingItemDate retourne null, jamais undefined", () => {
     const resultat = shoppingItemDate(ligneHeritee("legacy"));
     expect(resultat).toBeNull();
     expect(resultat).not.toBeUndefined();
   });
 
-  it("18. le tri ne lève plus et place l'article sans date en dernier", () => {
+  it("32. le tri par date ne lève plus et place l'article sans date en dernier", () => {
     const liste = [
       ligneHeritee("legacy"),
       makeItem({ id: "recent", created_at: jour(2026, 7, 2) }),
@@ -285,12 +423,12 @@ describe("lignes héritées sans aucune date", () => {
     ]);
   });
 
-  it("19. l'ordre entre plusieurs articles sans date reste stable", () => {
+  it("33. l'ordre entre plusieurs articles sans date reste stable pour le tri par date", () => {
     const liste = [ligneHeritee("a"), ligneHeritee("b"), ligneHeritee("c")];
     expect([...liste].sort(compareShoppingItemsByDateDesc).map((i) => i.id)).toEqual(["a", "b", "c"]);
   });
 
-  it("20. groupShoppingListByDay CONSERVE l'article sans date, dans un groupe dédié final", () => {
+  it("34. groupShoppingListByDay CONSERVE l'article sans date, dans un groupe dédié final", () => {
     const groupes = groupShoppingListByDay(
       [ligneHeritee("legacy"), makeItem({ id: "date", created_at: jour(2026, 7, 2) })],
       maintenant
@@ -304,12 +442,12 @@ describe("lignes héritées sans aucune date", () => {
     expect(groupes.flatMap((g) => g.items)).toHaveLength(2);
   });
 
-  it("21. aucun groupe sans date n'est créé quand tous les articles sont datés", () => {
+  it("35. aucun groupe sans date n'est créé quand tous les articles sont datés", () => {
     const groupes = groupShoppingListByDay([makeItem({ created_at: jour(2026, 7, 2) })], maintenant);
     expect(groupes.map((g) => g.key)).not.toContain("undated");
   });
 
-  it("22. aucune date n'est inventée : la ligne héritée n'est pas modifiée", () => {
+  it("36. aucune date n'est inventée : la ligne héritée n'est pas modifiée", () => {
     const ligne = ligneHeritee("legacy");
     const copie = { ...ligne };
     groupShoppingListByDay([ligne], maintenant);
@@ -319,7 +457,7 @@ describe("lignes héritées sans aucune date", () => {
     expect("updated_at" in ligne).toBe(false);
   });
 
-  it("23. mélange daté / non daté : les datés d'abord, ordre stable ensuite", () => {
+  it("37. mélange daté / non daté : les datés d'abord, ordre stable ensuite", () => {
     const liste = [
       ligneHeritee("sans-1"),
       makeItem({ id: "vieux", created_at: jour(2026, 6, 1) }),

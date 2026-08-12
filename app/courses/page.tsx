@@ -6,9 +6,9 @@ import BackButton from "@/components/BackButton";
 import { useLocale } from "@/components/LocaleProvider";
 import { formatDate, formatQuantity } from "@/lib/format";
 import {
-  addShoppingListItem,
+  addShoppingListItems,
   listKnownArticleNames,
-  compareShoppingItemsByDateDesc,
+  compareShoppingItemsAlphabetically,
   groupShoppingListByDay,
   listShoppingList,
   shoppingItemDate,
@@ -29,7 +29,6 @@ export default function CoursesPage() {
   const [items, setItems] = useState<ShoppingListItem[]>([]);
   const [knownNames, setKnownNames] = useState<string[]>([]);
   const [name, setName] = useState("");
-  const [useOtherName, setUseOtherName] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [unit, setUnit] = useState("");
   const [loading, setLoading] = useState(true);
@@ -50,11 +49,10 @@ export default function CoursesPage() {
 
   async function handleAdd() {
     if (!name.trim()) return;
-    await addShoppingListItem(name.trim(), quantity, unit.trim(), "manual");
+    await addShoppingListItems(name, quantity, unit.trim(), "manual");
     setName("");
     setQuantity(1);
     setUnit("");
-    setUseOtherName(false);
     void refresh();
   }
 
@@ -151,14 +149,11 @@ export default function CoursesPage() {
       <div className="space-y-2 rounded-xl border border-black/10 dark:border-white/10 p-3">
         <p className="text-xs opacity-60">{t("courses.addHint")}</p>
 
-        {knownNames.length > 0 && !useOtherName ? (
+        {knownNames.length > 0 && (
           <select
-            value={name}
+            value=""
             onChange={(e) => {
-              if (e.target.value === OTHER_SENTINEL) {
-                setUseOtherName(true);
-                setName("");
-              } else {
+              if (e.target.value !== OTHER_SENTINEL) {
                 setName(e.target.value);
               }
             }}
@@ -174,29 +169,16 @@ export default function CoursesPage() {
             ))}
             <option value={OTHER_SENTINEL}>{t("courses.otherArticle")}</option>
           </select>
-        ) : (
-          <div className="flex gap-2">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-              placeholder={t("courses.addPlaceholder")}
-              className={`flex-1 ${fieldClass}`}
-            />
-            {knownNames.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setUseOtherName(false);
-                  setName("");
-                }}
-                className="text-xs underline opacity-60 shrink-0"
-              >
-                {t("courses.chooseFromList")}
-              </button>
-            )}
-          </div>
         )}
+
+        <textarea
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("courses.addPlaceholder")}
+          aria-label={t("courses.addPlaceholder")}
+          rows={3}
+          className={`w-full resize-y ${fieldClass}`}
+        />
 
         <div className="flex gap-2">
           <input
@@ -233,7 +215,7 @@ export default function CoursesPage() {
           {Array.from(recipeGroups.entries()).map(([recipeName, groupItems]) => (
             <div key={recipeName} className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide opacity-60">{recipeName}</h3>
-              <ul className="space-y-2">{groupItems.map(renderItem)}</ul>
+              <ul className="space-y-2">{[...groupItems].sort(compareShoppingItemsAlphabetically).map(renderItem)}</ul>
             </div>
           ))}
         </div>
@@ -267,7 +249,7 @@ export default function CoursesPage() {
           <h2 className="text-sm font-medium opacity-60">{t("courses.purchased")}</h2>
           <ul className="space-y-2">
             {[...checked]
-              .sort(compareShoppingItemsByDateDesc)
+              .sort(compareShoppingItemsAlphabetically)
               .map((item) => (
               <li
                 key={item.id}
