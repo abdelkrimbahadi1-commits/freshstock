@@ -95,6 +95,7 @@ function stockRow(id: string, householdId: string, overrides: Partial<StockItem>
     price: null,
     added_by: AUTH_USER,
     status: "in_stock",
+    created_at: "2026-07-01T00:00:00.000Z",
     updated_at: "2026-07-01T00:00:00.000Z",
     ...overrides,
   };
@@ -143,6 +144,7 @@ describe("pullHouseholdData", () => {
     expect(result.perTable.stock_items).toMatchObject({ fetched: 1, created: 1, updated: 0, deletedLocally: 0 });
     const stored = await db.stock_items.get("s1");
     expect(stored?.name).toBe("Lait");
+    expect(stored?.created_at).toBe(remoteStock.created_at);
   });
 
   it("met à jour une ligne locale déjà présente sans écriture en attente", async () => {

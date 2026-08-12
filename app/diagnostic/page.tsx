@@ -33,6 +33,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const DB_NAME = "freshstock";
 const HOUSEHOLD_KEY = "gm_household_id";
+const STALE_FLUSH_REPORT_STORAGE_KEY = "freshstock_sync_stale_report_v1";
 const PAGE_SIZE = 500;
 const MAX_PAGES = 200;
 
@@ -168,6 +169,12 @@ interface FileResume {
   articlesProteges: number; // identifiants distincts couverts par une entrée
 }
 
+interface StaleDropReport {
+  staleDropped: number;
+  staleMissingLocal: number;
+  staleUpdatedAtMismatch: number;
+}
+
 interface Resume {
   produitsUneSeuleDeadLetter: number;
   produitsPlusieursDeadLetter: number;
@@ -195,6 +202,9 @@ interface Report {
     retry_pending: number;
     dead_letter: number;
     produitsProteges: number;
+    staleDropped: number;
+    staleMissingLocal: number;
+    staleUpdatedAtMismatch: number;
   };
   fileShoppingList: FileResume;
   absentsDuSnapshot: { disponible: boolean; raison: string; nombre: number; lignes: OrphanRow[] };
@@ -301,6 +311,24 @@ function resumerFile(entrees: QueueRow[], table: string): FileResume {
   }
   resume.articlesProteges = identifiants.size;
   return resume;
+}
+
+function lireRapportStale(): StaleDropReport {
+  if (typeof window === "undefined") {
+    return { staleDropped: 0, staleMissingLocal: 0, staleUpdatedAtMismatch: 0 };
+  }
+  try {
+    const raw = window.localStorage.getItem(STALE_FLUSH_REPORT_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Partial<StaleDropReport>) : {};
+    return {
+      staleDropped: typeof parsed.staleDropped === "number" ? parsed.staleDropped : 0,
+      staleMissingLocal: typeof parsed.staleMissingLocal === "number" ? parsed.staleMissingLocal : 0,
+      staleUpdatedAtMismatch:
+        typeof parsed.staleUpdatedAtMismatch === "number" ? parsed.staleUpdatedAtMismatch : 0,
+    };
+  } catch {
+    return { staleDropped: 0, staleMissingLocal: 0, staleUpdatedAtMismatch: 0 };
+  }
 }
 
 // --- Lecture Supabase, SELECT uniquement ------------------------------------
@@ -678,6 +706,7 @@ export default function DiagnosticPage() {
       };
 
       const pullMeta = meta.find((entry) => entry.household_id === localHouseholdId);
+      const staleReport = lireRapportStale();
 
       if (annule) return;
       setRemote(remoteState);
@@ -711,7 +740,7 @@ export default function DiagnosticPage() {
           })).sort((a, b) => b.nombre - a.nombre),
           parStatut,
         },
-        fileStockItems: { ...compteurs, produitsProteges: queueByRowId.size },
+        fileStockItems: { ...compteurs, produitsProteges: queueByRowId.size, ...staleReport },
         fileShoppingList,
         absentsDuSnapshot: { disponible, raison, nombre: absents.length, lignes: absents },
         reparations,
@@ -855,6 +884,18 @@ export default function DiagnosticPage() {
         <div className={ligne}>
           <span className="opacity-70">produits protégés par sync_queue</span>
           <strong>{report.fileStockItems.produitsProteges}</strong>
+        </div>
+        <div className={ligne}>
+          <span className="opacity-70">staleDropped total</span>
+          <strong>{report.fileStockItems.staleDropped}</strong>
+        </div>
+        <div className={ligne}>
+          <span className="opacity-70">stale ligne locale absente</span>
+          <strong>{report.fileStockItems.staleMissingLocal}</strong>
+        </div>
+        <div className={ligne}>
+          <span className="opacity-70">stale updated_at différent</span>
+          <strong>{report.fileStockItems.staleUpdatedAtMismatch}</strong>
         </div>
       </section>
 

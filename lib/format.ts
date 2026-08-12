@@ -111,3 +111,13 @@ export function isoDateInDays(days: number): string {
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
 }
+
+// Ajoute des jours a une date metier YYYY-MM-DD sans passer par le fuseau
+// local, pour eviter qu'un ticket date la veille ou le lendemain selon
+// l'appareil.
+export function addDaysToIsoDate(value: string, days: number): string {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}

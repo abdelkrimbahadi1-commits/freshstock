@@ -49,6 +49,7 @@ function makeItem(over: Partial<StockItem> = {}): StockItem {
     price: 3.5,
     added_by: USER,
     status: "in_stock",
+    created_at: T0,
     updated_at: T0,
     ...over,
   };

@@ -53,10 +53,10 @@ export interface StockItem {
   status: StockStatus;
   updated_at: string; // horodatage TECHNIQUE de derniere modification
   // Horodatage TECHNIQUE d'entree dans FreshStock, distinct de purchase_date.
-  // Optionnel : la colonne Supabase correspondante n'existe pas encore, et
-  // aucune ecriture ne la pose pour l'instant. Les lignes locales anterieures
-  // n'en ont donc pas — l'affichage doit le tolerer.
-  created_at?: string;
+  // Pose une seule fois a la creation. Les anciennes lignes IndexedDB peuvent
+  // encore ne pas l'avoir au runtime, mais toute nouvelle construction typee
+  // doit le fournir.
+  created_at: string;
 }
 
 export interface Recipe {

@@ -17,12 +17,22 @@ const MAX_RETRIES = 6;
 const BASE_BACKOFF_MS = 5_000; // 5s
 const MAX_BACKOFF_MS = 30 * 60_000; // 30min
 const SYNC_LOCK_NAME = "freshstock-sync-flush";
+export const STALE_FLUSH_REPORT_STORAGE_KEY = "freshstock_sync_stale_report_v1";
 
 export interface SyncStatusSummary {
   pendingCount: number;
   errorCount: number;
   deadLetterCount: number;
   lastError: string | null;
+  staleDropped: number;
+  staleMissingLocal: number;
+  staleUpdatedAtMismatch: number;
+}
+
+export interface FlushSyncReport {
+  staleDropped: number;
+  staleMissingLocal: number;
+  staleUpdatedAtMismatch: number;
 }
 
 function nowIso(): string {
@@ -52,19 +62,42 @@ function errorMessage(error: unknown): string {
   return message ?? "Erreur inconnue";
 }
 
-async function isStaleUpsert(entry: SyncQueueEntry): Promise<boolean> {
-  if (entry.op !== "upsert") return false;
+type StaleUpsertReason = "missing_local" | "updated_at_mismatch";
+
+function emptyFlushReport(): FlushSyncReport {
+  return { staleDropped: 0, staleMissingLocal: 0, staleUpdatedAtMismatch: 0 };
+}
+
+function addFlushReport(target: FlushSyncReport, source: FlushSyncReport) {
+  target.staleDropped += source.staleDropped;
+  target.staleMissingLocal += source.staleMissingLocal;
+  target.staleUpdatedAtMismatch += source.staleUpdatedAtMismatch;
+}
+
+let lastFlushReport: FlushSyncReport = emptyFlushReport();
+
+function persistFlushReport(report: FlushSyncReport) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STALE_FLUSH_REPORT_STORAGE_KEY, JSON.stringify(report));
+  } catch {
+    // Diagnostic best effort : la synchronisation ne doit jamais dépendre du stockage UI.
+  }
+}
+
+async function staleUpsertReason(entry: SyncQueueEntry): Promise<StaleUpsertReason | null> {
+  if (entry.op !== "upsert") return null;
   const rowId = entry.payload.id;
-  if (typeof rowId !== "string" || rowId.length === 0) return false;
+  if (typeof rowId !== "string" || rowId.length === 0) return null;
   const payloadUpdatedAt = entry.payload.updated_at;
-  if (typeof payloadUpdatedAt !== "string") return false;
+  if (typeof payloadUpdatedAt !== "string") return null;
 
   const local = await db.table<Record<string, unknown>, string>(entry.table).get(rowId);
-  if (!local) return true;
+  if (!local) return "missing_local";
 
   const localUpdatedAt = local.updated_at;
-  if (typeof localUpdatedAt !== "string") return false;
-  return localUpdatedAt !== payloadUpdatedAt;
+  if (typeof localUpdatedAt !== "string") return null;
+  return localUpdatedAt !== payloadUpdatedAt ? "updated_at_mismatch" : null;
 }
 
 export async function queueWrite(
@@ -141,14 +174,13 @@ const MAX_CONSECUTIVE_PASSES = 10;
 // automatiquement libéré si l'onglet qui le tient plante ou se ferme — pas
 // besoin de gérer un timeout à la main. Repli silencieux sur le seul verrou
 // en mémoire ci-dessus si l'API n'est pas disponible (navigateur ancien).
-async function withCrossTabLock(fn: () => Promise<void>): Promise<void> {
+async function withCrossTabLock<T>(fn: () => Promise<T>): Promise<T | null> {
   if (typeof navigator === "undefined" || !("locks" in navigator)) {
-    await fn();
-    return;
+    return fn();
   }
-  await navigator.locks.request(SYNC_LOCK_NAME, { ifAvailable: true }, async (lock) => {
-    if (!lock) return; // un autre onglet tient déjà le verrou, on abandonne cette tentative
-    await fn();
+  return navigator.locks.request(SYNC_LOCK_NAME, { ifAvailable: true }, async (lock) => {
+    if (!lock) return null; // un autre onglet tient déjà le verrou, on abandonne cette tentative
+    return fn();
   });
 }
 
@@ -160,7 +192,7 @@ let migrationLock: Promise<void> | null = null;
 // Promesse de la passe de flush actuellement en vol (nulle si aucune passe
 // n'est active), utilisée par `withSyncPaused`/`withPullPaused` pour
 // attendre sa fin avant de démarrer.
-let currentFlushPromise: Promise<void> | null = null;
+let currentFlushPromise: Promise<FlushSyncReport> | null = null;
 
 // Promesse du pull actuellement en vol (lib/householdPull.ts), nulle sinon.
 // Sert à empêcher `flushSyncQueue()` de démarrer une passe pendant qu'un
@@ -168,36 +200,41 @@ let currentFlushPromise: Promise<void> | null = null;
 // mêmes lignes en même temps), et à ce qu'une migration attende sa fin.
 let currentPullPromise: Promise<void> | null = null;
 
-export async function flushSyncQueue(): Promise<void> {
+export async function flushSyncQueue(): Promise<FlushSyncReport> {
   if (migrationLock || currentPullPromise) {
     // Une migration de foyer ou un pull Supabase -> Dexie est en cours : on
     // ne démarre pas de nouvelle passe de push. `withSyncPaused`/`withPullPaused`
     // relance flushSyncQueue() une fois terminé, donc rien n'est perdu — la
     // prochaine passe relit la file en entier de toute façon.
-    return;
+    return emptyFlushReport();
   }
   if (flushing) {
     // Une passe tourne déjà (potentiellement dans un état pas encore à
     // jour, ex. pas encore authentifiée) : on ne l'interrompt pas, mais on
     // garantit qu'une passe supplémentaire aura lieu juste après.
     rerunRequested = true;
-    return;
+    return currentFlushPromise ?? Promise.resolve(emptyFlushReport());
   }
   flushing = true;
   currentFlushPromise = (async () => {
+    const report = emptyFlushReport();
     try {
       let passes = 0;
       do {
         rerunRequested = false;
-        await withCrossTabLock(runFlush);
+        const passReport = await withCrossTabLock(runFlush);
+        if (passReport) addFlushReport(report, passReport);
         passes++;
       } while (rerunRequested && passes < MAX_CONSECUTIVE_PASSES);
+      lastFlushReport = { ...report };
+      persistFlushReport(lastFlushReport);
+      return report;
     } finally {
       flushing = false;
       currentFlushPromise = null;
     }
   })();
-  await currentFlushPromise;
+  return currentFlushPromise;
 }
 
 // Réservé à lib/householdMigration.ts. Empêche le démarrage de toute
@@ -252,14 +289,15 @@ export async function withPullPaused<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function runFlush(): Promise<void> {
+async function runFlush(): Promise<FlushSyncReport> {
+  const report = emptyFlushReport();
   const supabase = createClient();
-  if (!supabase) return; // mode local uniquement, pas de backend configuré
+  if (!supabase) return report; // mode local uniquement, pas de backend configuré
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return; // pas connecté : on retentera après login (voir registerSyncListeners)
+  if (!user) return report; // pas connecté : on retentera après login (voir registerSyncListeners)
 
   const now = Date.now();
   const all = await db.sync_queue.orderBy("created_at").toArray();
@@ -275,7 +313,11 @@ async function runFlush(): Promise<void> {
 
   for (const entry of eligible) {
     if (entry.id === undefined) continue;
-    if (await isStaleUpsert(entry)) {
+    const staleReason = await staleUpsertReason(entry);
+    if (staleReason) {
+      report.staleDropped++;
+      if (staleReason === "missing_local") report.staleMissingLocal++;
+      else report.staleUpdatedAtMismatch++;
       await db.sync_queue.delete(entry.id);
       continue;
     }
@@ -317,6 +359,7 @@ async function runFlush(): Promise<void> {
       // Pas de break : on continue immédiatement avec l'entrée suivante.
     }
   }
+  return report;
 }
 
 export function registerSyncListeners() {
@@ -352,5 +395,8 @@ export async function getSyncStatus(): Promise<SyncStatusSummary> {
     errorCount: errorEntries.length,
     deadLetterCount,
     lastError: lastErrorEntry?.last_error ?? null,
+    staleDropped: lastFlushReport.staleDropped,
+    staleMissingLocal: lastFlushReport.staleMissingLocal,
+    staleUpdatedAtMismatch: lastFlushReport.staleUpdatedAtMismatch,
   };
 }

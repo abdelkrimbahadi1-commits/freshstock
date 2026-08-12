@@ -30,6 +30,7 @@ function makeItem(over: Partial<StockItem> = {}): StockItem {
     price: 3.5,
     added_by: "user-1",
     status: "in_stock",
+    created_at: "2026-08-02T10:00:00.000Z",
     updated_at: "2026-08-02T10:00:00.000Z",
     ...over,
   };
@@ -67,12 +68,13 @@ describe("getStockItem", () => {
   });
 
   it("5. tolère l'absence de created_at sur les lignes antérieures", async () => {
-    const item = makeItem();
-    await db.stock_items.add(item);
+    const legacyItem = makeItem() as Partial<StockItem>;
+    delete legacyItem.created_at;
+    await db.stock_items.add(legacyItem as unknown as StockItem);
     const lu = await getStockItem("item-1");
     expect(lu?.created_at).toBeUndefined();
     // …et le prend en compte quand il est présent.
-    await db.stock_items.put({ ...item, created_at: "2026-07-30T08:00:00.000Z" });
+    await db.stock_items.put({ ...legacyItem, created_at: "2026-07-30T08:00:00.000Z" } as StockItem);
     expect((await getStockItem("item-1"))?.created_at).toBe("2026-07-30T08:00:00.000Z");
   });
 });

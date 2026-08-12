@@ -70,6 +70,7 @@ describe("migrateLocalDataToHousehold", () => {
       price: null,
       added_by: "local-user-9",
       status: "in_stock",
+      created_at: "2026-07-01T00:00:00.000Z",
       updated_at: "2026-07-01T00:00:00.000Z",
     });
     await db.shopping_list.put({
@@ -143,6 +144,7 @@ describe("migrateLocalDataToHousehold", () => {
       price: null,
       added_by: "local-user-9",
       status: "in_stock",
+      created_at: "2026-07-01T00:00:00.000Z",
       updated_at: "2026-07-01T00:00:00.000Z",
     });
 
@@ -196,6 +198,7 @@ describe("migrateLocalDataToHousehold", () => {
       price: null,
       added_by: "local-user-9",
       status: "in_stock",
+      created_at: "2026-07-01T00:00:00.000Z",
       updated_at: "2026-07-01T00:00:00.000Z",
     });
 
@@ -233,6 +236,7 @@ describe("migrateLocalDataToHousehold", () => {
       price: null,
       added_by: "compte-A",
       status: "in_stock",
+      created_at: "2026-07-01T00:00:00.000Z",
       updated_at: "2026-07-01T00:00:00.000Z",
     });
 
@@ -373,6 +377,7 @@ describe("migrateLocalDataToHousehold", () => {
       price: null,
       added_by: "local-user-9",
       status: "in_stock",
+      created_at: "2026-07-01T00:00:00.000Z",
       updated_at: "2026-07-01T00:00:00.000Z",
     });
     await queueWrite("stock_items", "upsert", { id: "stock-7", household_id: OLD_ID, added_by: "local-user-9" });

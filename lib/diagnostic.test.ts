@@ -288,6 +288,21 @@ describe("file de synchronisation shopping_list", () => {
   });
 });
 
+describe("instrumentation staleDropped", () => {
+  it("35. expose les compteurs staleDropped sans ecriture ni sync", () => {
+    for (const champ of [
+      "staleDropped",
+      "staleMissingLocal",
+      "staleUpdatedAtMismatch",
+      "staleDropped total",
+      "stale ligne locale absente",
+      "stale updated_at différent",
+    ]) {
+      expect(CODE).toContain(champ);
+    }
+  });
+});
+
 describe("analyse des dead_letter shopping_list", () => {
   it("29. produit les signatures distinctes via la fonction partagée", () => {
     expect(CODE).toContain('construireSignatures(queue, "shopping_list")');

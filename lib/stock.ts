@@ -1,7 +1,7 @@
 "use client";
 
 import { db } from "./db";
-import { isoDateInDays, todayIso } from "./format";
+import { addDaysToIsoDate, todayIso } from "./format";
 import { enqueueWrite, transactAndQueue } from "./offlineSync";
 import { getEffectiveUserId, getHouseholdId } from "./session";
 import {
@@ -19,11 +19,18 @@ export interface NewStockItemInput {
   quantity: number;
   unit: string;
   location: StockLocation;
+  purchase_date?: string; // ISO date ; si absent, date du jour comme avant
   expiry_date?: string; // ISO ; si absent, calculée depuis la catégorie
   price?: number | null;
 }
 
+export function computeExpiryDate(purchaseDate: string, shelfLifeDays: number): string {
+  return addDaysToIsoDate(purchaseDate, shelfLifeDays);
+}
+
 export async function addStockItem(input: NewStockItemInput): Promise<StockItem> {
+  const timestamp = new Date().toISOString();
+  const purchaseDate = input.purchase_date ?? todayIso();
   const item: StockItem = {
     id: crypto.randomUUID(),
     household_id: getHouseholdId(),
@@ -34,12 +41,13 @@ export async function addStockItem(input: NewStockItemInput): Promise<StockItem>
     quantity: input.quantity,
     unit: input.unit,
     location: input.location,
-    purchase_date: todayIso(),
-    expiry_date: input.expiry_date ?? isoDateInDays(DEFAULT_SHELF_LIFE_DAYS[input.category]),
+    purchase_date: purchaseDate,
+    expiry_date: input.expiry_date ?? computeExpiryDate(purchaseDate, DEFAULT_SHELF_LIFE_DAYS[input.category]),
     price: input.price ?? null,
     added_by: await getEffectiveUserId(),
     status: "in_stock",
-    updated_at: new Date().toISOString(),
+    created_at: timestamp,
+    updated_at: timestamp,
   };
   await transactAndQueue(["stock_items"], async () => {
     await db.stock_items.put(item);

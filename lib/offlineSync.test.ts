@@ -268,6 +268,7 @@ describe("flushSyncQueue", () => {
       price: null,
       added_by: "user-1",
       status: "in_stock",
+      created_at: "2026-08-01T10:00:00.000Z",
       updated_at: "2026-08-01T10:05:00.000Z",
     });
     await db.sync_queue.add({
@@ -297,6 +298,145 @@ describe("flushSyncQueue", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ id: "stock-stale", quantity: 2 });
+    expect(await db.sync_queue.count()).toBe(0);
+  });
+
+  it("compte un upsert stale quand la ligne locale est absente, sans envoi ni dead_letter", async () => {
+    const calls: Record<string, unknown>[] = [];
+    vi.mocked(createClient).mockReturnValue(
+      makeFakeSupabase((_table, _op, payload) => {
+        calls.push(payload);
+        return { error: null };
+      }) as never
+    );
+
+    await db.sync_queue.add({
+      table: "stock_items",
+      op: "upsert",
+      payload: { id: "stock-absent", quantity: 1, updated_at: "2026-08-01T10:00:00.000Z" },
+      created_at: "2026-08-01T10:00:00.000Z",
+      updated_at: "2026-08-01T10:01:00.000Z",
+      status: SYNC_STATUS.RETRY_PENDING,
+      attempts: 1,
+      last_error: "network",
+      next_retry_at: new Date(0).toISOString(),
+    });
+
+    const report = await flushSyncQueue();
+    const status = await getSyncStatus();
+
+    expect(report).toMatchObject({
+      staleDropped: 1,
+      staleMissingLocal: 1,
+      staleUpdatedAtMismatch: 0,
+    });
+    expect(status).toMatchObject({
+      staleDropped: 1,
+      staleMissingLocal: 1,
+      staleUpdatedAtMismatch: 0,
+    });
+    expect(calls).toEqual([]);
+    expect(await db.sync_queue.count()).toBe(0);
+  });
+
+  it("compte un upsert stale quand updated_at local est different, sans envoi ni dead_letter", async () => {
+    const calls: Record<string, unknown>[] = [];
+    vi.mocked(createClient).mockReturnValue(
+      makeFakeSupabase((_table, _op, payload) => {
+        calls.push(payload);
+        return { error: null };
+      }) as never
+    );
+
+    await db.stock_items.put({
+      id: "stock-stale",
+      household_id: "household-1",
+      product_id: null,
+      barcode: null,
+      name: "Lait",
+      category: "produit_laitier",
+      quantity: 2,
+      unit: "L",
+      location: "frigo",
+      purchase_date: "2026-08-01",
+      expiry_date: "2026-08-10",
+      price: null,
+      added_by: "user-1",
+      status: "in_stock",
+      created_at: "2026-08-01T10:00:00.000Z",
+      updated_at: "2026-08-01T10:05:00.000Z",
+    });
+    await db.sync_queue.add({
+      table: "stock_items",
+      op: "upsert",
+      payload: { id: "stock-stale", quantity: 1, updated_at: "2026-08-01T10:00:00.000Z" },
+      created_at: "2026-08-01T10:00:00.000Z",
+      updated_at: "2026-08-01T10:01:00.000Z",
+      status: SYNC_STATUS.RETRY_PENDING,
+      attempts: 1,
+      last_error: "network",
+      next_retry_at: new Date(0).toISOString(),
+    });
+
+    const report = await flushSyncQueue();
+
+    expect(report).toMatchObject({
+      staleDropped: 1,
+      staleMissingLocal: 0,
+      staleUpdatedAtMismatch: 1,
+    });
+    expect(calls).toEqual([]);
+    expect(await db.sync_queue.count()).toBe(0);
+    expect(await db.sync_queue_discarded.count()).toBe(0);
+  });
+
+  it("ne compte pas stale pour un upsert valide", async () => {
+    const calls: Record<string, unknown>[] = [];
+    vi.mocked(createClient).mockReturnValue(
+      makeFakeSupabase((_table, _op, payload) => {
+        calls.push(payload);
+        return { error: null };
+      }) as never
+    );
+
+    await db.stock_items.put({
+      id: "stock-valid",
+      household_id: "household-1",
+      product_id: null,
+      barcode: null,
+      name: "Riz",
+      category: "epicerie",
+      quantity: 1,
+      unit: "kg",
+      location: "placard",
+      purchase_date: "2026-08-01",
+      expiry_date: "2027-08-01",
+      price: null,
+      added_by: "user-1",
+      status: "in_stock",
+      created_at: "2026-08-01T10:00:00.000Z",
+      updated_at: "2026-08-01T10:00:00.000Z",
+    });
+    await db.sync_queue.add({
+      table: "stock_items",
+      op: "upsert",
+      payload: { id: "stock-valid", quantity: 1, updated_at: "2026-08-01T10:00:00.000Z" },
+      created_at: "2026-08-01T10:00:00.000Z",
+      updated_at: "2026-08-01T10:01:00.000Z",
+      status: SYNC_STATUS.PENDING,
+      attempts: 0,
+      last_error: null,
+      next_retry_at: new Date(0).toISOString(),
+    });
+
+    const report = await flushSyncQueue();
+
+    expect(report).toMatchObject({
+      staleDropped: 0,
+      staleMissingLocal: 0,
+      staleUpdatedAtMismatch: 0,
+    });
+    expect(calls).toHaveLength(1);
     expect(await db.sync_queue.count()).toBe(0);
   });
 

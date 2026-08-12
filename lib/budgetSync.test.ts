@@ -100,6 +100,7 @@ function ligneDistante(maintenant: Date): StockItem {
     price: 6,
     added_by: AUTH_USER,
     status: "consumed",
+    created_at: `${jourDuMoisCourant(maintenant, 5)}T10:00:00.000Z`,
     updated_at: `${jourDuMoisCourant(maintenant, 20)}T10:00:00.000Z`,
   };
 }
